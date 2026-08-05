@@ -29,6 +29,7 @@ import type {
   StatsRead,
   TokenResponse,
   User,
+  WritingAnalysis,
 } from "@/types/api";
 
 const BASE_URL =
@@ -205,4 +206,9 @@ export const api = {
     task: string;
     history: { role: string; content: string }[];
   }) => request<ChatResponse>("/chat", { method: "POST", json: payload }),
+  analyseWriting: (text: string) =>
+    request<WritingAnalysis>("/chat/writing-analysis", {
+      method: "POST",
+      json: { text },
+    }),
 };

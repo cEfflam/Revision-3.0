@@ -16,18 +16,21 @@ import {
   LogOut,
   MessageCircle,
   Network,
+  PenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearToken } from "@/lib/auth";
 import { useUser } from "@/components/layout/user-context";
 
+// `short` sert à la barre d'onglets mobile, où la place est comptée.
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Aujourd'hui", icon: Home },
-  { href: "/review", label: "Réviser", icon: Layers },
-  { href: "/brain", label: "Brain", icon: Brain },
-  { href: "/chat", label: "Coach IA", icon: MessageCircle },
-  { href: "/roadmap", label: "Skill Tree", icon: Network },
-  { href: "/stats", label: "Stats", icon: BarChart3 },
+  { href: "/dashboard", label: "Aujourd'hui", short: "Accueil", icon: Home },
+  { href: "/review", label: "Réviser", short: "Réviser", icon: Layers },
+  { href: "/brain", label: "Brain", short: "Brain", icon: Brain },
+  { href: "/writing", label: "Audit d'écrit", short: "Écrits", icon: PenLine },
+  { href: "/chat", label: "Coach IA", short: "Coach", icon: MessageCircle },
+  { href: "/roadmap", label: "Skill Tree", short: "Skills", icon: Network },
+  { href: "/stats", label: "Stats", short: "Stats", icon: BarChart3 },
 ];
 
 export function Sidebar() {
@@ -93,20 +96,20 @@ export function Sidebar() {
       </aside>
 
       {/* ── Mobile : onglets en bas ────────────────────────────────────── */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-slate-100 bg-white/90 px-2 py-2 backdrop-blur-md md:hidden">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-slate-100 bg-white/90 px-1 py-2 backdrop-blur-md md:hidden">
+        {NAV_ITEMS.map(({ href, short, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-xl px-2 py-1 text-[10px] font-semibold",
+                "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 text-[9px] font-semibold",
                 active ? "text-indigo-600" : "text-slate-400",
               )}
             >
               <Icon className="h-5 w-5" />
-              {label}
+              {short}
             </Link>
           );
         })}

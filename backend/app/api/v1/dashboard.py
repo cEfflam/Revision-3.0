@@ -178,7 +178,7 @@ def _build_actions(
                 icon="pen-line",
                 title="Défi rédaction",
                 subtitle=f"Cas pratique ou synthèse — {writing_target.title}",
-                href="/brain?engine=cge_analysis",
+                href="/writing",
                 accent="amber",
             )
         )

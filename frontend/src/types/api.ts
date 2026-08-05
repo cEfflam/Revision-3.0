@@ -247,3 +247,36 @@ export interface EngineInfo {
   tier: string;
   uses_documents: string;
 }
+
+// ── Audit d'écrit (CGE) ───────────────────────────────────────────────────
+/** Types de problèmes détectés — miroir du prompt CGE_ANALYSIS. */
+export type WritingIssueType =
+  | "plan"
+  | "repetition"
+  | "transition"
+  | "vocabulary"
+  | "syntax"
+  | "argument";
+
+export interface WritingIssue {
+  type: WritingIssueType | string;
+  severity: "info" | "warning" | "critical" | string;
+  label: string;
+  /**
+   * Extrait EXACT du texte de l'étudiant, ou chaîne vide. Le backend ne le
+   * conserve que s'il figure littéralement dans le texte soumis : c'est ce
+   * qui permet de le retrouver pour le surligner.
+   */
+  quote: string;
+  detail: string;
+  suggestion: string;
+}
+
+export interface WritingAnalysis {
+  score: number | null;
+  issues: WritingIssue[];
+  strengths: string[];
+  next_step: string;
+  model: string;
+  mocked: boolean;
+}
