@@ -1,23 +1,34 @@
 """
-AI Router — quel modèle pour quelle tâche.
+AI Router — quel modèle, avec quel budget, pour quelle tâche.
 
-L'idée à retenir : **la plupart des tâches n'ont pas besoin d'un gros modèle.**
-Générer 10 flashcards à partir d'un texte fourni est du reformatage. Analyser
-une synthèse de Culture Générale et proposer un nouveau plan demande du
-raisonnement. Payer le prix du second pour faire le premier, c'est brûler son
-budget en trois semaines — pour un résultat souvent identique.
+═══════════════════════════════════════════════════════════════════════════
+DEUX RÔLES, PAS TROIS PALIERS
+═══════════════════════════════════════════════════════════════════════════
+Un « palier de puissance » abstrait ne veut rien dire. Ce qui compte, c'est
+la NATURE de la tâche :
 
-Trois paliers :
+  LANGUAGE   Manipuler du texte : rédiger en français, structurer un cas de
+             droit, produire du JSON propre, reformuler un cours en cartes.
+             → Qwen 3.7 Flash. Excellent en français, très bon marché, et
+               fiable sur le JSON structuré.
 
-  CHEAP      Reformatage, extraction, génération de cartes, corrections
-             courtes. Rapide et quasi gratuit. ~90 % des appels.
-  STANDARD   Explications pédagogiques, conversation, cas pratiques.
-  REASONING  Analyse de copie, correction argumentée, construction de roadmap,
-             diagnostic de code complexe. Cher et lent : à réserver.
+  REASONING  Enchaîner des étapes logiques sans se tromper : résoudre un
+             exercice de maths, dérouler un algorithme, trouver la cause
+             d'un bug, ordonner un parcours d'apprentissage.
+             → DeepSeek V4 Flash avec le raisonnement activé. Il pose ses
+               étapes avant de conclure, ce qui élimine les erreurs de
+               logique en cours de route.
 
-Chaque palier a une chaîne de repli. Si le modèle principal est indisponible
-(rate limit, panne du fournisseur), on descend d'un cran plutôt que de rendre
-une erreur à l'utilisateur.
+═══════════════════════════════════════════════════════════════════════════
+LE RAISONNEMENT EST LE POSTE DE DÉPENSE N°1
+═══════════════════════════════════════════════════════════════════════════
+Les jetons de réflexion sont facturés au prix des jetons de sortie, et un
+modèle peut en produire plusieurs milliers avant d'écrire un seul mot. Sur
+une tâche de reformatage — générer des cartes à partir d'un texte déjà
+fourni — c'est la facture multipliée pour zéro gain.
+
+D'où la règle : le raisonnement n'est activé QUE sur les tâches du rôle
+`reasoning`, jamais ailleurs. Voir docs/COUTS.md pour le chiffrage.
 """
 
 from __future__ import annotations
@@ -27,9 +38,8 @@ from enum import StrEnum
 from app.core.config import settings
 
 
-class Tier(StrEnum):
-    cheap = "cheap"
-    standard = "standard"
+class ModelRole(StrEnum):
+    language = "language"
     reasoning = "reasoning"
 
 
@@ -58,30 +68,31 @@ class AiTask(StrEnum):
     error_analysis = "error_analysis"
 
 
-# Le tableau de routage. C'est le seul endroit à modifier pour changer la
-# politique de coût de toute l'application.
-TASK_TIER: dict[AiTask, Tier] = {
-    AiTask.flashcards: Tier.cheap,
-    AiTask.quiz: Tier.cheap,
-    AiTask.summary: Tier.cheap,
-    AiTask.mindmap: Tier.cheap,
-    AiTask.node_suggestions: Tier.cheap,
-    AiTask.english_chat: Tier.cheap,
-    AiTask.chat: Tier.standard,
-    AiTask.explain_code: Tier.standard,
-    AiTask.sql_review: Tier.standard,
-    # Socratique : ne jamais lâcher la réponse tout en restant utile demande
-    # une vraie retenue. Les petits modèles craquent et donnent la solution.
-    AiTask.math_hint: Tier.standard,
-    AiTask.cejm_case: Tier.standard,
-    AiTask.journal: Tier.cheap,
-    AiTask.cge_analysis: Tier.reasoning,
-    AiTask.roadmap: Tier.reasoning,
-    AiTask.error_analysis: Tier.reasoning,
+# ═════════════════════════════════════════════════════════════════════════
+#  Le tableau de routage — seul endroit à modifier pour changer la politique
+# ═════════════════════════════════════════════════════════════════════════
+TASK_ROLE: dict[AiTask, ModelRole] = {
+    # ── Langue, rédaction, JSON structuré → Qwen ─────────────────────────
+    AiTask.flashcards: ModelRole.language,       # JSON de création de cartes
+    AiTask.quiz: ModelRole.language,
+    AiTask.summary: ModelRole.language,
+    AiTask.mindmap: ModelRole.language,
+    AiTask.node_suggestions: ModelRole.language,
+    AiTask.chat: ModelRole.language,
+    AiTask.english_chat: ModelRole.language,
+    AiTask.journal: ModelRole.language,
+    AiTask.cejm_case: ModelRole.language,        # droit : rédaction structurée
+    AiTask.cge_analysis: ModelRole.language,     # français : finesse littéraire
+    # ── Logique, calcul, code → DeepSeek avec raisonnement ───────────────
+    AiTask.math_hint: ModelRole.reasoning,
+    AiTask.explain_code: ModelRole.reasoning,
+    AiTask.sql_review: ModelRole.reasoning,
+    AiTask.roadmap: ModelRole.reasoning,         # ordonnancement de prérequis
+    AiTask.error_analysis: ModelRole.reasoning,  # recherche de motifs
 }
 
-# Températures par tâche : basse quand on veut de la rigueur, plus haute quand
-# on veut de la variété (ne jamais générer deux fois le même exercice).
+# Températures : basse quand on veut de la rigueur, plus haute quand on veut
+# de la variété (ne jamais générer deux fois le même exercice).
 TASK_TEMPERATURE: dict[AiTask, float] = {
     AiTask.flashcards: 0.4,
     AiTask.quiz: 0.7,
@@ -113,50 +124,37 @@ JSON_TASKS: frozenset[AiTask] = frozenset(
 )
 
 # Plafond de génération par tâche. Ce n'est pas de la radinerie : sans borne,
-# un modèle bavard peut tripler la facture d'une simple génération de cartes
-# en délayant. Chaque valeur correspond à ce que la tâche exige réellement.
+# un modèle bavard délaye et triple la facture pour le même contenu utile.
+#
+# Ordre de grandeur : 1 jeton ≈ 0,75 mot en français. 400 jetons ≈ 300 mots,
+# soit largement de quoi écrire un bilan de 5 lignes.
+#
+# Les tâches de raisonnement ont un plafond plus large : les jetons de
+# réflexion s'imputent sur le même budget, et une borne trop basse tronquerait
+# la réponse APRÈS que le modèle a déjà payé sa réflexion — le pire des cas.
 MAX_TOKENS: dict[AiTask, int] = {
-    AiTask.summary: 700,
-    AiTask.journal: 400,
-    AiTask.math_hint: 600,
-    AiTask.flashcards: 1600,
-    AiTask.quiz: 1600,
-    AiTask.node_suggestions: 1200,
-    AiTask.chat: 1200,
-    AiTask.english_chat: 800,
-    AiTask.explain_code: 1600,
-    AiTask.sql_review: 1400,
-    AiTask.cejm_case: 1600,
-    AiTask.cge_analysis: 2500,
-    AiTask.roadmap: 2500,
-    AiTask.error_analysis: 1500,
+    # Langue
+    AiTask.journal: 500,
+    AiTask.summary: 800,
+    AiTask.english_chat: 900,
+    AiTask.chat: 1400,
+    AiTask.node_suggestions: 1400,
+    AiTask.flashcards: 2000,
+    AiTask.quiz: 2000,
+    AiTask.cejm_case: 2000,
+    AiTask.cge_analysis: 3000,
+    # Raisonnement (réflexion incluse dans le budget)
+    AiTask.math_hint: 2500,
+    AiTask.sql_review: 3000,
+    AiTask.explain_code: 3500,
+    AiTask.error_analysis: 3000,
+    AiTask.roadmap: 4000,
 }
-DEFAULT_MAX_TOKENS = 1200
+DEFAULT_MAX_TOKENS = 1500
 
 
-def max_tokens_for(task: AiTask) -> int:
-    return MAX_TOKENS.get(task, DEFAULT_MAX_TOKENS)
-
-
-def reasoning_enabled(task: AiTask) -> bool:
-    """
-    Le raisonnement doit-il être activé pour cette tâche ?
-
-    ⚠️ C'est LE poste de dépense à surveiller. Les jetons de raisonnement sont
-    facturés comme les autres, et un modèle qui « réfléchit » peut en produire
-    plusieurs milliers avant d'écrire un seul mot de réponse. Sur une tâche de
-    reformatage (générer des flashcards à partir d'un texte fourni), ça n'est
-    qu'une facture multipliée sans aucun gain de qualité.
-
-    Règle : uniquement sur le palier `reasoning`, c'est-à-dire les trois tâches
-    qui exigent réellement une analyse — audit de copie CGE, construction de
-    roadmap, et recherche de motifs dans l'historique d'erreurs.
-    """
-    return tier_for(task) is Tier.reasoning
-
-
-def tier_for(task: AiTask) -> Tier:
-    return TASK_TIER.get(task, Tier.standard)
+def role_for(task: AiTask) -> ModelRole:
+    return TASK_ROLE.get(task, ModelRole.language)
 
 
 def temperature_for(task: AiTask) -> float:
@@ -167,27 +165,66 @@ def expects_json(task: AiTask) -> bool:
     return task in JSON_TASKS
 
 
+def max_tokens_for(task: AiTask) -> int:
+    return MAX_TOKENS.get(task, DEFAULT_MAX_TOKENS)
+
+
+def reasoning_enabled(task: AiTask) -> bool:
+    """
+    Le raisonnement doit-il être activé ? Uniquement sur le rôle `reasoning`,
+    et seulement si l'interrupteur global `AI_REASONING` est levé.
+    """
+    return settings.AI_REASONING and role_for(task) is ModelRole.reasoning
+
+
+def model_for(role: ModelRole) -> str:
+    return (
+        settings.AI_MODEL_REASONING
+        if role is ModelRole.reasoning
+        else settings.AI_MODEL_LANGUAGE
+    )
+
+
 def model_chain(task: AiTask) -> list[str]:
     """
-    Modèle principal puis replis, du plus adapté au plus sûr.
+    Modèle principal, puis repli sur l'autre rôle.
 
-    On dédoublonne en préservant l'ordre : si deux paliers sont configurés sur
-    le même slug, inutile de retenter le même modèle.
+    Le repli est volontairement croisé : si Qwen est saturé, DeepSeek prendra
+    le relais sur une tâche de rédaction. Le résultat sera un peu plus cher et
+    peut-être moins fin en français, mais l'utilisateur obtient une réponse au
+    lieu d'une erreur.
     """
-    tier = tier_for(task)
-    ladders: dict[Tier, list[str]] = {
-        Tier.reasoning: [
-            settings.AI_MODEL_REASONING,
-            settings.AI_MODEL_STANDARD,
-            settings.AI_MODEL_CHEAP,
-        ],
-        Tier.standard: [settings.AI_MODEL_STANDARD, settings.AI_MODEL_CHEAP],
-        Tier.cheap: [settings.AI_MODEL_CHEAP, settings.AI_MODEL_STANDARD],
-    }
+    primary = model_for(role_for(task))
+    secondary = model_for(
+        ModelRole.language
+        if role_for(task) is ModelRole.reasoning
+        else ModelRole.reasoning
+    )
+    chain = [m for m in (primary, secondary) if m]
+    # Dédoublonne en préservant l'ordre (cas où les deux rôles pointent sur
+    # le même slug).
     seen: set[str] = set()
-    chain: list[str] = []
-    for model in ladders[tier]:
-        if model and model not in seen:
-            seen.add(model)
-            chain.append(model)
-    return chain
+    return [m for m in chain if not (m in seen or seen.add(m))]
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  Tarification — pour chiffrer chaque appel
+# ═════════════════════════════════════════════════════════════════════════
+def price_per_million(role: ModelRole) -> tuple[float, float]:
+    """(prix entrée, prix sortie) en dollars par million de jetons."""
+    if role is ModelRole.reasoning:
+        return settings.AI_PRICE_REASONING_IN, settings.AI_PRICE_REASONING_OUT
+    return settings.AI_PRICE_LANGUAGE_IN, settings.AI_PRICE_LANGUAGE_OUT
+
+
+def estimate_cost(
+    task: AiTask, prompt_tokens: int, completion_tokens: int
+) -> float:
+    """
+    Coût en dollars d'un appel.
+
+    Les jetons de réflexion sont déjà comptés dans `completion_tokens` par
+    OpenRouter : ils sont facturés au tarif de sortie, pas à un tarif à part.
+    """
+    price_in, price_out = price_per_million(role_for(task))
+    return (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000

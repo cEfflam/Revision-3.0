@@ -51,8 +51,7 @@ async def health_detailed(db: DbSession) -> dict[str, object]:
     checks["ai"] = {
         "status": "mock" if client.is_mocked else "live",
         "models": {
-            "cheap": settings.AI_MODEL_CHEAP,
-            "standard": settings.AI_MODEL_STANDARD,
+            "language": settings.AI_MODEL_LANGUAGE,
             "reasoning": settings.AI_MODEL_REASONING,
         },
     }
@@ -81,8 +80,7 @@ async def ai_status() -> AiStatusRead:
         mocked=client.is_mocked,
         reason=reason,
         models={
-            "cheap": settings.AI_MODEL_CHEAP,
-            "standard": settings.AI_MODEL_STANDARD,
+            "language": settings.AI_MODEL_LANGUAGE,
             "reasoning": settings.AI_MODEL_REASONING,
         },
         embedder=embedder.name,

@@ -34,12 +34,13 @@ import httpx
 from app.core.config import settings
 from app.services.ai.router import (
     AiTask,
+    estimate_cost,
     expects_json,
     max_tokens_for,
     model_chain,
     reasoning_enabled,
+    role_for,
     temperature_for,
-    tier_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ class OpenRouterClient:
         temperature: float | None = None,
     ) -> Completion:
         chain = model_chain(task)
-        tier = tier_for(task).value
+        tier = role_for(task).value
 
         if self.is_mocked:
             if not settings.AI_MOCK:
@@ -131,7 +132,7 @@ class OpenRouterClient:
             # Désactivé explicitement sur les tâches simples : c'est le premier
             # levier d'économie. Un modèle qui « réfléchit » facture ses jetons
             # de réflexion, même pour reformater un texte déjà fourni.
-            "reasoning": {"enabled": reasoning_enabled(task) and settings.AI_REASONING},
+            "reasoning": {"enabled": reasoning_enabled(task)},
         }
         if expects_json(task):
             # Tous les modèles n'honorent pas ce paramètre ; le parseur en aval
@@ -192,15 +193,19 @@ def _log_usage(task: AiTask, completion: Completion) -> None:
     voit quelle tâche brûle quoi, et on sait laquelle optimiser en premier.
     Repérable dans les logs : `docker compose logs backend | grep "coût"`.
     """
+    cost = estimate_cost(
+        task, completion.prompt_tokens, completion.completion_tokens
+    )
     logger.info(
-        "coût | %-18s | %-32s | entrée %5d (dont %4d en cache) | sortie %5d "
-        "(dont %4d de réflexion) | %4d ms",
+        "coût | %-18s | %-30s | entrée %5d (%4d en cache) | sortie %5d "
+        "(%4d de réflexion) | %8.6f $ | %4d ms",
         task.value,
         completion.model,
         completion.prompt_tokens,
         completion.cached_tokens,
         completion.completion_tokens,
         completion.reasoning_tokens,
+        cost,
         completion.latency_ms,
     )
 

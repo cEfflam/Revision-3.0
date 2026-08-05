@@ -71,15 +71,24 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_APP_NAME: str = "REVISIO"
     OPENROUTER_SITE_URL: str = "http://localhost:3000"
-    AI_MODEL_CHEAP: str = "deepseek/deepseek-v4-flash-0731"
-    AI_MODEL_STANDARD: str = "deepseek/deepseek-v4-flash-0731"
+    # Deux rôles de modèle (voir services/ai/router.py) :
+    #   language  → français, rédaction, droit, JSON structuré
+    #   reasoning → maths, algorithmique, code, ordonnancement
+    AI_MODEL_LANGUAGE: str = "qwen/qwen3.7-flash"
     AI_MODEL_REASONING: str = "deepseek/deepseek-v4-flash-0731"
     AI_REQUEST_TIMEOUT: int = 120
     # Interrupteur général du raisonnement. Même à true, il n'est activé que
-    # sur les tâches du palier « reasoning » (voir services/ai/router.py).
-    # Le passer à false coupe TOUS les jetons de réflexion — utile en fin de
-    # mois si le budget est serré.
+    # sur les tâches du rôle « reasoning ». Le passer à false coupe TOUS les
+    # jetons de réflexion — utile en fin de mois si le budget est serré.
     AI_REASONING: bool = True
+
+    # Tarifs en dollars par million de jetons. Servent uniquement à chiffrer
+    # la consommation dans les logs et sur /ai/status : à réajuster si
+    # OpenRouter change ses prix.
+    AI_PRICE_LANGUAGE_IN: float = 0.03
+    AI_PRICE_LANGUAGE_OUT: float = 0.13
+    AI_PRICE_REASONING_IN: float = 0.09
+    AI_PRICE_REASONING_OUT: float = 0.18
 
     # ── Embeddings ───────────────────────────────────────────────────────
     EMBEDDING_PROVIDER: str = "fastembed"  # fastembed | openai | hash

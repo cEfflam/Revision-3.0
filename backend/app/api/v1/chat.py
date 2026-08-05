@@ -26,7 +26,7 @@ from app.schemas.ai import (
 )
 from app.services.ai import service as ai_service
 from app.services.ai.openrouter import AiUnavailable, ChatMessage, get_ai_client
-from app.services.ai.router import AiTask, tier_for
+from app.services.ai.router import AiTask, reasoning_enabled, role_for
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["moteurs IA"])
@@ -78,7 +78,7 @@ async def chat(
         answer=result.answer,
         sources=[SourceRead(**vars(s)) for s in result.sources],
         model=result.model,
-        tier=tier_for(payload.task).value,
+        tier=role_for(payload.task).value,
         mocked=result.mocked,
         latency_ms=result.latency_ms,
         tokens=result.tokens,
@@ -159,7 +159,10 @@ async def list_engines() -> list[dict[str, str]]:
         {
             "task": task.value,
             "label": label,
-            "tier": tier_for(task).value,
+            # « language » = Qwen (français, rédaction, JSON) ;
+            # « reasoning » = DeepSeek (maths, algo, code).
+            "tier": role_for(task).value,
+            "reasoning": str(reasoning_enabled(task)).lower(),
             "uses_documents": str(task not in NO_RAG_TASKS).lower(),
         }
         for task, label in labels.items()

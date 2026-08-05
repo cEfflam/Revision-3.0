@@ -28,7 +28,8 @@
 | Graphe + diagnostic des prérequis | 51 nœuds, 47 arêtes, 41 verrouillés |
 | Heatmap, streak, statistiques | Carte des compétences par matière |
 | **Audit d'écrit CGE** | Surlignage warning/info/global validé au navigateur |
-| Contrôle du coût IA | Raisonnement ciblé, plafonds, journalisation |
+| Contrôle du coût IA | Raisonnement ciblé, plafonds, chiffrage par appel |
+| Routage par matière | Qwen (français/CEJM/JSON) · DeepSeek (maths/algo/code) |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
@@ -55,7 +56,19 @@ les **thèmes exacts du programme**, chacun avec sa méthode de révision propre
 - [ ] Détailler le référentiel matière par matière
 - [ ] Associer à chaque type de nœud sa méthode d'entraînement
 
-### 3. Le reste
+### 3. Écran de réglages dans l'application
+*Demandé le 2026-08-05.* Aujourd'hui, ajuster un plafond de jetons ou basculer
+une matière d'un modèle à l'autre demande d'éditer le code et de redémarrer.
+
+- [ ] Régler `MAX_TOKENS` par tâche depuis l'interface
+- [ ] Basculer `AI_REASONING` sans redémarrer
+- [ ] Choisir le modèle par rôle
+- [ ] Voir la consommation réelle du mois (jetons + coût), pas seulement dans les logs
+
+> Suppose de persister ces réglages en base plutôt que dans le `.env`, et
+> d'ajouter une table de suivi de consommation.
+
+### 4. Le reste
 - [ ] Édition / suppression / suspension de cartes *(bloque l'usage quotidien)*
 - [ ] Graphe visuel React Flow *(termine la phase 3)*
 - [ ] Générateur de roadmap IA *(seule killer feature absente)*
