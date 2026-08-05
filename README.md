@@ -13,7 +13,7 @@
 ![Qdrant](https://img.shields.io/badge/Qdrant-1.12-DC244C?logo=qdrant&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-📄 [Cahier des charges](docs/SPECIFICATIONS.md) · 🔀 [Workflow Git & conventions](docs/GIT-WORKFLOW.md)
+📄 [Cahier des charges](docs/SPECIFICATIONS.md) · 🔍 [Comment marche le RAG](docs/RAG.md) · 🔀 [Workflow Git](docs/GIT-WORKFLOW.md)
 
 ---
 
