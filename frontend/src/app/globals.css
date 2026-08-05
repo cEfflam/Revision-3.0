@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+@layer base {
+  body {
+    @apply bg-surface text-slate-800 antialiased;
+  }
+  ::selection {
+    @apply bg-indigo-100 text-indigo-900;
+  }
+}
+
+/* ── Composants du design system ───────────────────────────────────────────
+   Trois classes seulement : la carte, la tuile d'icône et la ligne d'action.
+   Tout l'écran type « iOS soft » de la maquette se construit avec elles.   */
+@layer components {
+  .card-soft {
+    @apply rounded-card border border-slate-100 bg-white/80 shadow-soft backdrop-blur-md;
+  }
+
+  .icon-tile {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600;
+  }
+
+  .action-row {
+    @apply flex w-full items-center gap-4 rounded-tile border border-slate-100 bg-white px-4 py-3.5 text-left shadow-soft transition hover:bg-indigo-50/40 active:scale-[0.99];
+  }
+}
