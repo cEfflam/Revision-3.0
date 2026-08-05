@@ -1,0 +1,17 @@
+# Normalise les fins de ligne : indispensable sous Windows.
+# Sans ça, un script .sh écrit en CRLF casse dans un conteneur Linux.
+* text=auto eol=lf
+
+*.sh      text eol=lf
+Dockerfile text eol=lf
+*.py      text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.woff2 binary
