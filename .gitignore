@@ -4,6 +4,15 @@
 .env.*.local
 !.env.example
 
+# Fichiers où traînent des clés d'API. Tout ce qui ressemble à une clé
+# posée à la racine est exclu par défaut : mieux vaut ignorer un fichier
+# inoffensif que publier un secret.
+OpenRouter.txt
+openrouter*.txt
+*api*key*.txt
+*.key
+secrets/
+
 # ── Python / Backend ──────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

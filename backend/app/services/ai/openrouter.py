@@ -35,7 +35,9 @@ from app.core.config import settings
 from app.services.ai.router import (
     AiTask,
     expects_json,
+    max_tokens_for,
     model_chain,
+    reasoning_enabled,
     temperature_for,
     tier_for,
 )
@@ -60,6 +62,11 @@ class Completion:
     latency_ms: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # Jetons de « réflexion » produits avant la réponse. Facturés comme les
+    # autres, et invisibles dans le texte renvoyé : on les compte à part pour
+    # pouvoir repérer une tâche qui coûte cher sans raison.
+    reasoning_tokens: int = 0
+    cached_tokens: int = 0
     mocked: bool = False
     attempts: list[str] = field(default_factory=list)
 
@@ -102,7 +109,7 @@ class OpenRouterClient:
         messages: list[ChatMessage],
         *,
         task: AiTask,
-        max_tokens: int = 1600,
+        max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> Completion:
         chain = model_chain(task)
@@ -120,7 +127,11 @@ class OpenRouterClient:
         payload_base: dict[str, Any] = {
             "messages": [m.as_dict() for m in messages],
             "temperature": temp,
-            "max_tokens": max_tokens,
+            "max_tokens": max_tokens or max_tokens_for(task),
+            # Désactivé explicitement sur les tâches simples : c'est le premier
+            # levier d'économie. Un modèle qui « réfléchit » facture ses jetons
+            # de réflexion, même pour reformater un texte déjà fourni.
+            "reasoning": {"enabled": reasoning_enabled(task) and settings.AI_REASONING},
         }
         if expects_json(task):
             # Tous les modèles n'honorent pas ce paramètre ; le parseur en aval
@@ -139,15 +150,22 @@ class OpenRouterClient:
 
                 choice = data["choices"][0]["message"]["content"] or ""
                 usage = data.get("usage") or {}
-                return Completion(
+                details = usage.get("completion_tokens_details") or {}
+                prompt_details = usage.get("prompt_tokens_details") or {}
+
+                completion = Completion(
                     text=choice.strip(),
                     model=model,
                     tier=tier,
                     latency_ms=int((time.perf_counter() - started) * 1000),
                     prompt_tokens=int(usage.get("prompt_tokens", 0)),
                     completion_tokens=int(usage.get("completion_tokens", 0)),
+                    reasoning_tokens=int(details.get("reasoning_tokens", 0) or 0),
+                    cached_tokens=int(prompt_details.get("cached_tokens", 0) or 0),
                     attempts=attempts,
                 )
+                _log_usage(task, completion)
+                return completion
             except Exception as exc:
                 attempts.append(f"{model}: {type(exc).__name__}")
                 logger.warning("Modèle %s indisponible (%s) — repli.", model, exc)
@@ -164,6 +182,27 @@ class OpenRouterClient:
 @lru_cache(maxsize=1)
 def get_ai_client() -> OpenRouterClient:
     return OpenRouterClient()
+
+
+def _log_usage(task: AiTask, completion: Completion) -> None:
+    """
+    Trace la consommation de chaque appel.
+
+    Sans cette ligne, « l'IA coûte cher » reste une impression. Avec elle, on
+    voit quelle tâche brûle quoi, et on sait laquelle optimiser en premier.
+    Repérable dans les logs : `docker compose logs backend | grep "coût"`.
+    """
+    logger.info(
+        "coût | %-18s | %-32s | entrée %5d (dont %4d en cache) | sortie %5d "
+        "(dont %4d de réflexion) | %4d ms",
+        task.value,
+        completion.model,
+        completion.prompt_tokens,
+        completion.cached_tokens,
+        completion.completion_tokens,
+        completion.reasoning_tokens,
+        completion.latency_ms,
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -290,23 +329,40 @@ def _mock_nodes(source: str) -> str:
 
 
 def _mock_cge(source: str) -> str:
+    # Les `quote` sont des extraits RÉELS du texte soumis, pas du texte
+    # inventé : sans ça, le mode simulé n'exercerait jamais le surlignage
+    # côté interface, et on ne découvrirait le bug qu'avec une vraie clé API.
+    excerpts = _sentences(source, 3)
+    first = excerpts[0] if excerpts else ""
+    second = excerpts[1] if len(excerpts) > 1 else first
+
     return json.dumps(
         {
             "score": 12,
             "issues": [
                 {
-                    "type": "plan",
+                    "type": "repetition",
                     "severity": "warning",
-                    "label": "Plan perfectible",
-                    "detail": "Les deux premières parties se recouvrent (simulé).",
-                    "suggestion": "Distingue clairement constat et analyse.",
+                    "label": "Répétition d'idée",
+                    "quote": second,
+                    "detail": "Cette idée a déjà été formulée plus haut (simulé).",
+                    "suggestion": "Fusionne les deux passages et garde la formulation la plus précise.",
                 },
                 {
-                    "type": "repetition",
+                    "type": "transition",
                     "severity": "info",
-                    "label": "Répétition d'idée",
-                    "detail": "L'argument central revient trois fois (simulé).",
-                    "suggestion": "Fusionne les paragraphes 2 et 4.",
+                    "label": "Transition absente",
+                    "quote": first,
+                    "detail": "Le passage d'une partie à l'autre est abrupt (simulé).",
+                    "suggestion": "Introduis un connecteur logique : « Dès lors », « À l'inverse ».",
+                },
+                {
+                    "type": "plan",
+                    "severity": "critical",
+                    "label": "Plan perfectible",
+                    "quote": "",  # problème global : ne cible aucun passage
+                    "detail": "Les deux premières parties se recouvrent (simulé).",
+                    "suggestion": "Distingue clairement constat et analyse.",
                 },
             ],
             "strengths": ["Introduction claire", "Vocabulaire correct"],

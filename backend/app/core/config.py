@@ -71,10 +71,15 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_APP_NAME: str = "REVISIO"
     OPENROUTER_SITE_URL: str = "http://localhost:3000"
-    AI_MODEL_CHEAP: str = "google/gemini-2.0-flash-001"
-    AI_MODEL_STANDARD: str = "qwen/qwen-2.5-72b-instruct"
-    AI_MODEL_REASONING: str = "deepseek/deepseek-r1"
+    AI_MODEL_CHEAP: str = "deepseek/deepseek-v4-flash-0731"
+    AI_MODEL_STANDARD: str = "deepseek/deepseek-v4-flash-0731"
+    AI_MODEL_REASONING: str = "deepseek/deepseek-v4-flash-0731"
     AI_REQUEST_TIMEOUT: int = 120
+    # Interrupteur général du raisonnement. Même à true, il n'est activé que
+    # sur les tâches du palier « reasoning » (voir services/ai/router.py).
+    # Le passer à false coupe TOUS les jetons de réflexion — utile en fin de
+    # mois si le budget est serré.
+    AI_REASONING: bool = True
 
     # ── Embeddings ───────────────────────────────────────────────────────
     EMBEDDING_PROVIDER: str = "fastembed"  # fastembed | openai | hash

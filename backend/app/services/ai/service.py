@@ -195,9 +195,10 @@ async def generate_summary(text: str) -> str:
         ChatMessage(role="system", content=system_prompt(AiTask.summary)),
         ChatMessage(role="user", content=text[:12000]),
     ]
-    completion = await get_ai_client().complete(
-        messages, task=AiTask.summary, max_tokens=700
-    )
+    # Pas de max_tokens ici : le plafond vient de router.MAX_TOKENS, seule
+    # source de vérité. Le dupliquer dans chaque appel garantit qu'un jour
+    # les deux divergeront.
+    completion = await get_ai_client().complete(messages, task=AiTask.summary)
     return completion.text
 
 
@@ -225,9 +226,7 @@ async def analyse_writing(text: str) -> dict:
         ChatMessage(role="system", content=system_prompt(AiTask.cge_analysis)),
         ChatMessage(role="user", content=text[:12000]),
     ]
-    completion = await get_ai_client().complete(
-        messages, task=AiTask.cge_analysis, max_tokens=2000
-    )
+    completion = await get_ai_client().complete(messages, task=AiTask.cge_analysis)
     try:
         payload = parse_json_response(completion.text)
     except ValueError as exc:
@@ -248,7 +247,5 @@ async def write_journal(stats: dict) -> str:
         ChatMessage(role="system", content=system_prompt(AiTask.journal)),
         ChatMessage(role="user", content=f"Données de la journée :\n{lines}"),
     ]
-    completion = await get_ai_client().complete(
-        messages, task=AiTask.journal, max_tokens=400
-    )
+    completion = await get_ai_client().complete(messages, task=AiTask.journal)
     return completion.text

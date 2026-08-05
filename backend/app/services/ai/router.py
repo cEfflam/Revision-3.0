@@ -112,6 +112,48 @@ JSON_TASKS: frozenset[AiTask] = frozenset(
     }
 )
 
+# Plafond de génération par tâche. Ce n'est pas de la radinerie : sans borne,
+# un modèle bavard peut tripler la facture d'une simple génération de cartes
+# en délayant. Chaque valeur correspond à ce que la tâche exige réellement.
+MAX_TOKENS: dict[AiTask, int] = {
+    AiTask.summary: 700,
+    AiTask.journal: 400,
+    AiTask.math_hint: 600,
+    AiTask.flashcards: 1600,
+    AiTask.quiz: 1600,
+    AiTask.node_suggestions: 1200,
+    AiTask.chat: 1200,
+    AiTask.english_chat: 800,
+    AiTask.explain_code: 1600,
+    AiTask.sql_review: 1400,
+    AiTask.cejm_case: 1600,
+    AiTask.cge_analysis: 2500,
+    AiTask.roadmap: 2500,
+    AiTask.error_analysis: 1500,
+}
+DEFAULT_MAX_TOKENS = 1200
+
+
+def max_tokens_for(task: AiTask) -> int:
+    return MAX_TOKENS.get(task, DEFAULT_MAX_TOKENS)
+
+
+def reasoning_enabled(task: AiTask) -> bool:
+    """
+    Le raisonnement doit-il être activé pour cette tâche ?
+
+    ⚠️ C'est LE poste de dépense à surveiller. Les jetons de raisonnement sont
+    facturés comme les autres, et un modèle qui « réfléchit » peut en produire
+    plusieurs milliers avant d'écrire un seul mot de réponse. Sur une tâche de
+    reformatage (générer des flashcards à partir d'un texte fourni), ça n'est
+    qu'une facture multipliée sans aucun gain de qualité.
+
+    Règle : uniquement sur le palier `reasoning`, c'est-à-dire les trois tâches
+    qui exigent réellement une analyse — audit de copie CGE, construction de
+    roadmap, et recherche de motifs dans l'historique d'erreurs.
+    """
+    return tier_for(task) is Tier.reasoning
+
 
 def tier_for(task: AiTask) -> Tier:
     return TASK_TIER.get(task, Tier.standard)
