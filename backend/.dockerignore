@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.fastembed_cache/
+storage/*
+!storage/.gitkeep
+.env
+.env.*
+!.env.example
+*.md
+.git/
+.gitignore

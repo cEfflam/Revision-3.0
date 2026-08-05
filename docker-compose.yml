@@ -1,0 +1,112 @@
+# ==========================================================================
+#  REVISIO 3.0 — Orchestration des services
+#
+#  Ce fichier décrit l'état "de référence" de la stack.
+#  `docker-compose.override.yml` (chargé automatiquement) y ajoute le confort
+#  de développement : hot-reload, montage du code source, logs verbeux.
+#
+#  Démarrer :        docker compose up -d
+#  Voir les logs :   docker compose logs -f backend
+#  Tout arrêter :    docker compose down
+#  Repartir de 0 :   docker compose down -v   (⚠️ supprime les données)
+# ==========================================================================
+
+name: revisio
+
+services:
+  # ── Base relationnelle : utilisateurs, graphe, cartes SRS, statistiques ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: revisio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-revisio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-revisio}
+      POSTGRES_DB: ${POSTGRES_DB:-revisio}
+      # Accélère les tests locaux, à retirer sur un vrai serveur.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Le backend attend que ce test passe avant de démarrer.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-revisio} -d ${POSTGRES_DB:-revisio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks: [revisio]
+
+  # ── Base vectorielle : mémoire sémantique (RAG) ──────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: revisio-qdrant
+    restart: unless-stopped
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"   # API REST + dashboard web
+      - "${QDRANT_GRPC_PORT:-6334}:6334"   # gRPC (plus rapide, utilisé par le client Python)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks: [revisio]
+
+  # ── API FastAPI : toute la logique métier ────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: revisio-backend:local
+    container_name: revisio-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # ⚠️ Ces deux valeurs écrasent celles du .env : à l'intérieur du réseau
+      # Docker, on joint les services par leur NOM, pas par localhost.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-revisio}:${POSTGRES_PASSWORD:-revisio}@postgres:5432/${POSTGRES_DB:-revisio}
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - backend_storage:/app/storage
+      - fastembed_cache:/app/.fastembed_cache
+    # Applique les migrations, puis démarre le serveur.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
+    networks: [revisio]
+
+  # ── Frontend Next.js ────────────────────────────────────────────────────
+  # Désactivé par défaut : sous Windows, `npm run dev` en natif est bien plus
+  # rapide qu'un bind mount Docker.
+  # Pour le lancer quand même :  docker compose --profile full up -d
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    image: revisio-frontend:local
+    container_name: revisio-frontend
+    restart: unless-stopped
+    profiles: ["full"]
+    depends_on: [backend]
+    ports:
+      - "3000:3000"
+    networks: [revisio]
+
+networks:
+  revisio:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  backend_storage:
+  fastembed_cache:

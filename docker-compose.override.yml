@@ -1,0 +1,26 @@
+# ==========================================================================
+#  Surcouche DÉVELOPPEMENT — chargée automatiquement par `docker compose up`.
+#
+#  Rôle : rendre le backend modifiable à chaud. On monte le dossier ./backend
+#  dans le conteneur : tu édites un fichier .py sur Windows, uvicorn le
+#  recharge instantanément dans Linux. Pas de rebuild d'image.
+#
+#  Sur un serveur de production, on lance sans ce fichier :
+#      docker compose -f docker-compose.yml up -d
+# ==========================================================================
+
+services:
+  backend:
+    volumes:
+      # Le code source vit sur ta machine, pas dans l'image.
+      - ./backend:/app
+      # …sauf le cache des modèles d'embeddings : trop lourd pour un bind mount.
+      - fastembed_cache:/app/.fastembed_cache
+    environment:
+      ENVIRONMENT: development
+      # Traces SQL complètes dans les logs : très pédagogique au début,
+      # à passer sur false quand ça devient bruyant.
+      SQL_ECHO: "false"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
