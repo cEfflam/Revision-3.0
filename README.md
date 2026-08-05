@@ -13,7 +13,7 @@
 ![Qdrant](https://img.shields.io/badge/Qdrant-1.12-DC244C?logo=qdrant&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-Le cahier des charges complet est dans [docs/SPECIFICATIONS.md](docs/SPECIFICATIONS.md).
+📄 [Cahier des charges](docs/SPECIFICATIONS.md) · 🔀 [Workflow Git & conventions](docs/GIT-WORKFLOW.md)
 
 ---
 
