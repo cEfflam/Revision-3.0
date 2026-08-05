@@ -1,0 +1,20 @@
+# Outillage du backend (le packaging reste géré par requirements.txt).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = erreurs et pyflakes, I = tri des imports, UP = modernisation,
+# B = pièges classiques (bugbear), SIM = simplifications.
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # longueur de ligne : gérée par le formateur
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
