@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { BookOpen, Loader2, NotebookPen } from "lucide-react";
 import { api } from "@/lib/api";
 import { pct, SUBJECT_LABELS } from "@/lib/utils";
@@ -97,13 +98,20 @@ export default function StatsPage() {
             <BookOpen className="h-5 w-5 text-indigo-500" />
             Carte des compétences
           </CardTitle>
+          <p className="-mt-2 mb-3 text-sm font-medium text-slate-400">
+            Clique une matière pour l&apos;ouvrir et travailler dessus.
+          </p>
           <div className="flex flex-col gap-3">
             {Object.entries(stats.subject_mastery)
               .sort(([, a], [, b]) => b - a)
               .map(([subject, mastery]) => (
-                <div key={subject}>
+                <Link
+                  key={subject}
+                  href={`/subjects/${subject}`}
+                  className="group rounded-xl px-2 py-1.5 transition hover:bg-indigo-50/40"
+                >
                   <div className="mb-1 flex justify-between text-sm">
-                    <span className="font-semibold text-slate-700">
+                    <span className="font-semibold text-slate-700 group-hover:text-indigo-700">
                       {SUBJECT_LABELS[subject] ?? subject}
                     </span>
                     <span className="font-bold text-indigo-600">
@@ -111,7 +119,7 @@ export default function StatsPage() {
                     </span>
                   </div>
                   <Progress value={mastery} className="h-2.5" />
-                </div>
+                </Link>
               ))}
             {Object.keys(stats.subject_mastery).length === 0 && (
               <p className="text-sm font-medium text-slate-400">

@@ -11,6 +11,7 @@ pour comparer le schéma déclaré au schéma réel de la base.
 from app.models.base import Base, TimestampMixin
 from app.models.content import Document, DocumentChunk
 from app.models.enums import (
+    SUBJECT_LABELS,
     CardKind,
     CardState,
     DocumentCollection,
@@ -31,10 +32,11 @@ from app.models.learning import (
     ReviewLog,
     StudySession,
 )
-from app.models.user import Goal, SelfAssessment, User
+from app.models.user import Goal, RoadmapStep, SelfAssessment, User
 
 __all__ = [
     "DEFAULT_EASE_FACTOR",
+    "SUBJECT_LABELS",
     "Base",
     "Card",
     "CardKind",
@@ -54,6 +56,7 @@ __all__ = [
     "NodeStatus",
     "Rating",
     "ReviewLog",
+    "RoadmapStep",
     "SelfAssessment",
     "StudySession",
     "Subject",

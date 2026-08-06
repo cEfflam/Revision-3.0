@@ -49,6 +49,24 @@ class Subject(StrEnum):
     other = "other"
 
 
+# Libellés affichables des matières. Définis côté backend pour que l'API et
+# l'interface ne divergent jamais : un libellé recopié dans le frontend finit
+# toujours par se désynchroniser.
+SUBJECT_LABELS: dict[str, str] = {
+    Subject.dev.value: "Développement",
+    Subject.sql.value: "SQL",
+    Subject.network.value: "Réseau",
+    Subject.security.value: "Cybersécurité",
+    Subject.math.value: "Mathématiques",
+    Subject.cejm.value: "CEJM",
+    Subject.cge.value: "Culture générale",
+    Subject.english.value: "Anglais",
+    Subject.cloud.value: "Cloud",
+    Subject.devops.value: "DevOps",
+    Subject.other.value: "Autre",
+}
+
+
 class CardKind(StrEnum):
     basic = "basic"    # question / réponse
     cloze = "cloze"    # texte à trous
