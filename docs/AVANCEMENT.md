@@ -1,15 +1,15 @@
 # 📊 Avancement de REVISIO
 
-> Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-05**.
+> Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-06**.
 
-**Global : ~65 %** du cahier des charges.
+**Global : ~82 %** du cahier des charges.
 
 | Phase | État | Détail |
 | --- | --- | --- |
 | 1 · Fondations | ✅ **100 %** | Docker, auth, modèles, migrations, UI |
 | 2 · RAG & import | ✅ **100 %** | PDF/DOCX/MD, Qdrant, embeddings locaux, AI Router |
-| 3 · Graphe & SRS | 🟡 **70 %** | SM-2 ✅, graphe + diagnostic ✅ · manque React Flow, FSRS |
-| 4 · Moteurs & Roadmap IA | 🟡 **45 %** | Audit CGE ✅ · manque sandbox SQL, roadmap IA, mode Focus |
+| 3 · Graphe & SRS | 🟡 **75 %** | SM-2 ✅, graphe + diagnostic ✅ · manque React Flow, FSRS |
+| 4 · Moteurs & Roadmap IA | ✅ **90 %** | Roadmap IA, Focus, quiz, CGE ✅ · manque sandbox SQL |
 | 5 · Polish & déploiement | ❌ **5 %** | Manifest PWA seul · manque CI/CD, VPS, backups |
 
 ---
@@ -30,23 +30,25 @@
 | **Audit d'écrit CGE** | Surlignage warning/info/global validé au navigateur |
 | Contrôle du coût IA | Raisonnement ciblé, plafonds, chiffrage par appel |
 | Routage par matière | Qwen (français/CEJM/JSON) · DeepSeek (maths/algo/code) |
+| **Sélection par matière** | `/subjects` + détail, barres de stats cliquables |
+| **Mode Focus chronométré** | Chrono décompté, file ciblée par matière ou notion |
+| **Quiz dynamique** | Généré depuis un cours, score et explications |
+| **Roadmap IA** | Parcours ordonné persisté, étapes cochables |
+| **Gestion des cartes** | Correction, suspension (sort de la file), suppression |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
 
 ## 🔜 Prochaines étapes, par priorité
 
-### 1. Sélection ciblée d'une matière ou d'un thème
-*Demandé le 2026-08-05.* Aujourd'hui la révision est globale : on ne peut pas
-choisir « je bosse les maths maintenant ».
+### 1. ✅ Sélection ciblée d'une matière ou d'un thème
+*Demandé le 2026-08-05, livré le 2026-08-06.*
 
-- [ ] Cliquer une barre de la carte des compétences (`/stats`) → ouvrir la matière
-- [ ] Écran par matière : cours synthétisés, notions, cartes, points faibles
-- [ ] Lancer une session ciblée sur un thème précis
-- [ ] Générer des exercices sur la notion sélectionnée
-
-> L'API le permet déjà en partie : `/cards/queue?subject=`, `/nodes?subject=`,
-> `/nodes/{id}/diagnosis`. Ce qui manque est surtout côté interface.
+- [x] Barres de `/stats` cliquables → écran de la matière
+- [x] `/subjects` : toutes les matières, la plus fragile en tête
+- [x] `/subjects/[matière]` : notions, points faibles, cours, conseil d'attaque
+- [x] Session ciblée `?subject=` ou `?node=` avec chronomètre `?focus=`
+- [x] Quiz généré sur la matière ou le cours sélectionné
 
 ### 2. Référentiel détaillé par thème
 *Demandé le 2026-08-05.* Le graphe actuel a 51 nœuds génériques. Objectif :
@@ -69,13 +71,14 @@ une matière d'un modèle à l'autre demande d'éditer le code et de redémarrer
 > d'ajouter une table de suivi de consommation.
 
 ### 4. Le reste
-- [ ] Édition / suppression / suspension de cartes *(bloque l'usage quotidien)*
+- [x] ~~Édition / suppression / suspension de cartes~~
+- [x] ~~Générateur de roadmap IA~~
+- [x] ~~Mode Focus chronométré~~
+- [x] ~~Quiz dynamique~~
 - [ ] Graphe visuel React Flow *(termine la phase 3)*
-- [ ] Générateur de roadmap IA *(seule killer feature absente)*
-- [ ] Mode Focus chronométré
-- [ ] Quiz dynamique *(prompt écrit, aucun endpoint)*
 - [ ] Injection auto dans le graphe à l'import *(`suggest_nodes()` jamais appelée)*
-- [ ] FSRS, sandbox SQL, OCR
+- [ ] Sandbox SQL *(exécution réelle des requêtes)*
+- [ ] FSRS, OCR
 - [ ] CI GitHub Actions, déploiement VPS, sauvegardes
 
 ---
