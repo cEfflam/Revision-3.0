@@ -99,6 +99,7 @@ export interface CardRead {
   node_id: number | null;
   document_id: number | null;
   ai_generated: boolean;
+  is_suspended: boolean;
 }
 
 export interface CardQueueItem extends CardRead {
@@ -246,6 +247,69 @@ export interface EngineInfo {
   label: string;
   tier: string;
   uses_documents: string;
+}
+
+// ── Matières ──────────────────────────────────────────────────────────────
+export interface SubjectSummary {
+  subject: string;
+  label: string;
+  mastery: number;
+  nodes_total: number;
+  nodes_mastered: number;
+  nodes_critical: number;
+  cards_total: number;
+  cards_due: number;
+  documents_total: number;
+}
+
+export interface SubjectDetail extends SubjectSummary {
+  nodes: NodeRead[];
+  weak_nodes: NodeRead[];
+  documents: DocumentRead[];
+  advice: string;
+}
+
+// ── Quiz ──────────────────────────────────────────────────────────────────
+export interface QuizQuestion {
+  question: string;
+  kind: "mcq" | "open" | string;
+  choices: string[];
+  /** Index de la bonne réponse dans `choices`, ou -1 si question ouverte. */
+  answer_index: number;
+  explanation: string;
+}
+
+export interface QuizResponse {
+  questions: QuizQuestion[];
+  source: string;
+  model: string;
+  mocked: boolean;
+}
+
+// ── Roadmap ───────────────────────────────────────────────────────────────
+export interface RoadmapStep {
+  id: number;
+  order_index: number;
+  title: string;
+  subject: string;
+  estimated_minutes: number;
+  why: string;
+  /** Titres des étapes prérequises, séparés par « | ». */
+  prerequisites: string;
+  node_id: number | null;
+  is_done: boolean;
+  completed_at: string | null;
+}
+
+export interface RoadmapRead {
+  objective: string;
+  feasible: boolean;
+  advice: string;
+  total_estimated_hours: number;
+  steps: RoadmapStep[];
+  generated_at: string | null;
+  model: string;
+  mocked: boolean;
 }
 
 // ── Audit d'écrit (CGE) ───────────────────────────────────────────────────

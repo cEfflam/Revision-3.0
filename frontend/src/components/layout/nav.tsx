@@ -9,10 +9,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  BookOpen,
   Brain,
   Flame,
   Home,
   Layers,
+  LayoutGrid,
   LogOut,
   MessageCircle,
   Network,
@@ -23,15 +25,21 @@ import { clearToken } from "@/lib/auth";
 import { useUser } from "@/components/layout/user-context";
 
 // `short` sert à la barre d'onglets mobile, où la place est comptée.
+// Seuls les six premiers y apparaissent : au-delà, les libellés deviennent
+// illisibles sur un écran de 375 px.
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Aujourd'hui", short: "Accueil", icon: Home },
   { href: "/review", label: "Réviser", short: "Réviser", icon: Layers },
+  { href: "/subjects", label: "Mes matières", short: "Matières", icon: BookOpen },
   { href: "/brain", label: "Brain", short: "Brain", icon: Brain },
-  { href: "/writing", label: "Audit d'écrit", short: "Écrits", icon: PenLine },
+  { href: "/roadmap", label: "Parcours", short: "Parcours", icon: Network },
   { href: "/chat", label: "Coach IA", short: "Coach", icon: MessageCircle },
-  { href: "/roadmap", label: "Skill Tree", short: "Skills", icon: Network },
+  { href: "/writing", label: "Audit d'écrit", short: "Écrits", icon: PenLine },
+  { href: "/cards", label: "Mes cartes", short: "Cartes", icon: LayoutGrid },
   { href: "/stats", label: "Stats", short: "Stats", icon: BarChart3 },
 ];
+
+const MOBILE_ITEMS = NAV_ITEMS.slice(0, 6);
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -97,7 +105,7 @@ export function Sidebar() {
 
       {/* ── Mobile : onglets en bas ────────────────────────────────────── */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-slate-100 bg-white/90 px-1 py-2 backdrop-blur-md md:hidden">
-        {NAV_ITEMS.map(({ href, short, icon: Icon }) => {
+        {MOBILE_ITEMS.map(({ href, short, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link

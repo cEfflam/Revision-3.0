@@ -22,11 +22,16 @@ import type {
   IngestResponse,
   NodeRead,
   OnboardingResponse,
+  QuizResponse,
   Rating,
   ReviewResponse,
+  RoadmapRead,
+  RoadmapStep,
   SearchResponse,
   SessionRead,
   StatsRead,
+  SubjectDetail,
+  SubjectSummary,
   TokenResponse,
   User,
   WritingAnalysis,
@@ -138,10 +143,13 @@ export const api = {
     }),
 
   // ── Révision ────────────────────────────────────────────────────────────
-  queue: (params: { limit?: number; subject?: string } = {}) => {
+  queue: (
+    params: { limit?: number; subject?: string; node_id?: number } = {},
+  ) => {
     const query = new URLSearchParams();
     if (params.limit) query.set("limit", String(params.limit));
     if (params.subject) query.set("subject", params.subject);
+    if (params.node_id) query.set("node_id", String(params.node_id));
     return request<CardQueueItem[]>(`/cards/queue?${query.toString()}`);
   },
   reviewCard: (cardId: number, rating: Rating, durationMs: number) =>
@@ -159,9 +167,15 @@ export const api = {
       method: "POST",
       json: payload,
     }),
-  listCards: (params: { node_id?: number } = {}) => {
+  listCards: (
+    params: { node_id?: number; limit?: number; ai_generated?: boolean } = {},
+  ) => {
     const query = new URLSearchParams();
     if (params.node_id) query.set("node_id", String(params.node_id));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.ai_generated !== undefined) {
+      query.set("ai_generated", String(params.ai_generated));
+    }
     return request<CardRead[]>(`/cards?${query.toString()}`);
   },
 
@@ -211,4 +225,45 @@ export const api = {
       method: "POST",
       json: { text },
     }),
+
+  // ── Matières ────────────────────────────────────────────────────────────
+  subjects: () => request<SubjectSummary[]>("/subjects"),
+  subject: (subject: string) =>
+    request<SubjectDetail>(`/subjects/${subject}`),
+
+  // ── Quiz ────────────────────────────────────────────────────────────────
+  quiz: (payload: {
+    document_id?: number;
+    node_id?: number;
+    text?: string;
+    count?: number;
+  }) => request<QuizResponse>("/cards/quiz", { method: "POST", json: payload }),
+
+  // ── Roadmap ─────────────────────────────────────────────────────────────
+  roadmap: () => request<RoadmapRead>("/roadmap"),
+  generateRoadmap: (max_steps = 12) =>
+    request<RoadmapRead>("/roadmap/generate", {
+      method: "POST",
+      json: { replace: true, max_steps },
+    }),
+  toggleRoadmapStep: (stepId: number, is_done: boolean) =>
+    request<RoadmapStep>(`/roadmap/steps/${stepId}`, {
+      method: "PATCH",
+      json: { is_done },
+    }),
+  deleteRoadmap: () => request<void>("/roadmap", { method: "DELETE" }),
+
+  // ── Gestion des cartes ──────────────────────────────────────────────────
+  updateCard: (
+    cardId: number,
+    patch: Partial<{
+      front: string;
+      back: string;
+      hint: string;
+      explanation: string;
+      is_suspended: boolean;
+    }>,
+  ) => request<CardRead>(`/cards/${cardId}`, { method: "PATCH", json: patch }),
+  deleteCard: (cardId: number) =>
+    request<void>(`/cards/${cardId}`, { method: "DELETE" }),
 };

@@ -51,6 +51,8 @@ class CardRead(BaseModel):
     node_id: int | None = None
     document_id: int | None = None
     ai_generated: bool = False
+    # Exposé pour que l'écran de gestion sache afficher l'état sans le déduire.
+    is_suspended: bool = False
 
 
 class CardQueueItem(CardRead):
@@ -94,6 +96,41 @@ class GenerateCardsResponse(BaseModel):
     cards: list[CardRead]
     model: str
     mocked: bool
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  Quiz
+# ═════════════════════════════════════════════════════════════════════════
+class QuizRequest(BaseModel):
+    """Un quiz se génère depuis un document, une notion, ou un texte collé."""
+
+    document_id: int | None = None
+    node_id: int | None = None
+    text: str = Field(default="", max_length=20000)
+    count: int = Field(default=5, ge=1, le=15)
+
+
+class QuizQuestion(BaseModel):
+    question: str
+    kind: str = "mcq"
+    choices: list[str] = Field(default_factory=list)
+    # Index de la bonne réponse dans `choices`. -1 pour une question ouverte.
+    answer_index: int = -1
+    explanation: str = ""
+
+
+class QuizResponse(BaseModel):
+    """
+    Volontairement NON persisté : un quiz est un contrôle ponctuel, pas un
+    objet à conserver. Ce qui compte pour la suite, ce sont les cartes SRS —
+    elles, sont en base. Générer un quiz frais à chaque fois évite aussi de
+    réviser deux fois les mêmes questions par cœur.
+    """
+
+    questions: list[QuizQuestion]
+    source: str = ""
+    model: str = ""
+    mocked: bool = False
 
 
 # ═════════════════════════════════════════════════════════════════════════
