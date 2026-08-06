@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -83,6 +85,9 @@ class User(Base, TimestampMixin):
     activities: Mapped[list[DailyActivity]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    roadmap_steps: Mapped[list[RoadmapStep]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.id} {self.email}>"
@@ -127,6 +132,59 @@ class Goal(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<Goal {self.id} {self.title!r}>"
+
+
+class RoadmapStep(Base, TimestampMixin):
+    """
+    Une étape du parcours généré par l'IA.
+
+    Persisté (contrairement au quiz) parce qu'un parcours se suit sur des
+    semaines : on doit pouvoir cocher une étape, y revenir, et voir sa
+    progression. Régénérer à chaque affichage coûterait un appel de modèle
+    par ouverture d'écran, pour un contenu qui ne change pas.
+    """
+
+    __tablename__ = "roadmap_steps"
+    __table_args__ = (Index("ix_roadmap_user_order", "user_id", "order_index"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    goal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("goals.id", ondelete="CASCADE"), nullable=True
+    )
+    # Rattachement optionnel à une notion existante du graphe : permet de
+    # lancer une session directement depuis une étape.
+    node_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_nodes.id", ondelete="SET NULL"), nullable=True
+    )
+
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(32), default="other")
+    estimated_minutes: Mapped[int] = mapped_column(
+        Integer, default=60, server_default=text("60")
+    )
+    # Pourquoi cette étape ICI et pas ailleurs — c'est ce qui distingue un
+    # parcours d'une simple liste de sujets.
+    why: Mapped[str] = mapped_column(Text, default="")
+    # Titres des étapes prérequises, séparés par « | ». Pas de table de
+    # liaison : ces dépendances sont descriptives et régénérées à chaque
+    # roadmap, une normalisation coûterait plus qu'elle ne rapporte.
+    prerequisites: Mapped[str] = mapped_column(Text, default="")
+
+    is_done: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="roadmap_steps")
+
+    def __repr__(self) -> str:
+        return f"<RoadmapStep {self.order_index} {self.title!r}>"
 
 
 class SelfAssessment(Base, TimestampMixin):
