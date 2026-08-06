@@ -64,7 +64,36 @@
 - [x] Session ciblée `?subject=` ou `?node=` avec chronomètre `?focus=`
 - [x] Quiz généré sur la matière ou le cours sélectionné
 
-### 2. Référentiel détaillé par thème
+### 1bis. Écran d'édition du référentiel — **la suite immédiate**
+*Décidé le 2026-08-06.* L'API est complète, l'interface manque.
+
+- [x] Hiérarchie `Matière > Thème > Notion` en base (`parent_id`, migration 0004)
+- [x] `GET /subjects/{matière}/curriculum` — l'arbre, avec les notions « à classer »
+- [x] `PATCH /nodes/{id}` avec `parent_id` — ranger, sortir, refuser les cycles
+- [x] Rattachement d'un document à des notions existantes (anti-doublon)
+- [ ] **Écran d'arbre éditable** : créer un thème, y glisser des notions, renommer
+- [ ] Restreindre la recherche RAG au thème en cours de travail
+
+> **Décision structurante :** le référentiel est **écrit à la main**, pas généré.
+> Le programme du BTS est fixe et connu ; le deviner à chaque import produit
+> des doublons et une granularité incohérente. L'IA aide à *ranger* dans ce
+> squelette, elle ne le fabrique pas.
+
+### 2. Technique Feynman — écran dédié
+*Idée notée le 2026-08-06.* Seule des quatre méthodes à n'être que partielle.
+
+Le déroulé visé, fidèle à la méthode :
+1. **Choisir une notion** dans le référentiel.
+2. **Expliquer avec ses mots**, comme à un enfant de 10 ans, sans jargon.
+3. **Repérer les blocages** : l'IA compare l'explication au cours et pointe ce
+   qui est flou, absent ou faux — puis affiche le passage exact du cours.
+4. **Recommencer** jusqu'à ce que ce soit limpide, avec un suivi des tentatives.
+
+> À nuancer : une fois la notion réellement révisée, l'exercice se confond avec
+> une carte SRS ouverte. L'intérêt propre est le *suivi de fluidité* dans le
+> temps, pas l'explication isolée.
+
+### 3. Référentiel détaillé par thème
 *Demandé le 2026-08-05.* Le graphe actuel a 51 nœuds génériques. Objectif :
 les **thèmes exacts du programme**, chacun avec sa méthode de révision propre
 (un cas pratique CEJM ne se révise pas comme une jointure SQL).
@@ -72,7 +101,7 @@ les **thèmes exacts du programme**, chacun avec sa méthode de révision propre
 - [ ] Détailler le référentiel matière par matière
 - [ ] Associer à chaque type de nœud sa méthode d'entraînement
 
-### 3. Écran de réglages dans l'application
+### 4. Écran de réglages dans l'application
 *Demandé le 2026-08-05.* Aujourd'hui, ajuster un plafond de jetons ou basculer
 une matière d'un modèle à l'autre demande d'éditer le code et de redémarrer.
 

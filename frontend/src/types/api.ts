@@ -312,6 +312,35 @@ export interface RoadmapRead {
   mocked: boolean;
 }
 
+// ── Rattachement document ↔ notions ───────────────────────────────────────
+export interface NodeProposal {
+  title: string;
+  /** "certain" (rattachement sûr) · "suggested" (à confirmer) · "new" */
+  verdict: string;
+  score: number;
+  matched_node_id: number | null;
+  matched_node_title: string;
+  matched_node_subject: string;
+  suggested_subject: string;
+  selected: boolean;
+}
+
+export interface DocumentMapping {
+  document_id: number;
+  document_title: string;
+  headings_found: number;
+  proposals: NodeProposal[];
+  already_linked: number[];
+  message: string;
+}
+
+export interface ApplyMappingResponse {
+  created: number;
+  linked: number;
+  document_id: number;
+  message: string;
+}
+
 // ── Entraînement type examen ──────────────────────────────────────────────
 export interface ExamFormat {
   subject: string;

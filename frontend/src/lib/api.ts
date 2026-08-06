@@ -8,11 +8,13 @@
 
 import { clearToken, getToken } from "@/lib/auth";
 import type {
+  ApplyMappingResponse,
   CardQueueItem,
   CardRead,
   ChatResponse,
   DashboardRead,
   DiagnosisRead,
+  DocumentMapping,
   DocumentRead,
   EngineInfo,
   ExamEvaluation,
@@ -211,6 +213,21 @@ export const api = {
     request<IngestResponse>("/documents/upload", { method: "POST", form }),
   deleteDocument: (id: number) =>
     request<void>(`/documents/${id}`, { method: "DELETE" }),
+  mapDocument: (id: number) =>
+    request<DocumentMapping>(`/documents/${id}/map`),
+  applyMapping: (
+    id: number,
+    decisions: {
+      title: string;
+      node_id: number | null;
+      subject: string;
+      create: boolean;
+    }[],
+  ) =>
+    request<ApplyMappingResponse>(`/documents/${id}/map`, {
+      method: "POST",
+      json: { decisions },
+    }),
   searchDocuments: (query: string, top_k = 6) =>
     request<SearchResponse>("/documents/search", {
       method: "POST",
