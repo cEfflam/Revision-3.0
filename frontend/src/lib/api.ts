@@ -15,6 +15,10 @@ import type {
   DiagnosisRead,
   DocumentRead,
   EngineInfo,
+  ExamEvaluation,
+  ExamFormat,
+  ExamRead,
+  PracticeSubject,
   GenerateCardsResponse,
   Goal,
   GraphRead,
@@ -252,6 +256,24 @@ export const api = {
       json: { is_done },
     }),
   deleteRoadmap: () => request<void>("/roadmap", { method: "DELETE" }),
+
+  // ── Entraînement type examen ────────────────────────────────────────────
+  practiceSubjects: () => request<PracticeSubject[]>("/practice/subjects"),
+  practiceFormats: () => request<ExamFormat[]>("/practice/formats"),
+  generateExam: (payload: {
+    subject: string;
+    topic?: string;
+    node_id?: number;
+  }) => request<ExamRead>("/practice/generate", { method: "POST", json: payload }),
+  evaluateExam: (payload: {
+    subject: string;
+    exercise: ExamRead;
+    answer: string;
+  }) =>
+    request<ExamEvaluation>("/practice/evaluate", {
+      method: "POST",
+      json: payload,
+    }),
 
   // ── Gestion des cartes ──────────────────────────────────────────────────
   updateCard: (

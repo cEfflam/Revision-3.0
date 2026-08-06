@@ -21,6 +21,7 @@ from app.services.ai.openrouter import (
     get_ai_client,
     parse_json_response,
 )
+from app.services.ai.exam_formats import format_for
 from app.services.ai.prompts import system_prompt
 from app.services.ai.router import AiTask
 from app.services.rag import pipeline
@@ -318,6 +319,131 @@ async def generate_roadmap(
         return {}
     if not isinstance(payload, dict):
         return {}
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    return payload
+
+
+async def generate_exam(
+    user: User,
+    *,
+    subject: str,
+    topic: str = "",
+    node_titles: list[str] | None = None,
+) -> dict:
+    """
+    Construit un sujet d'entraînement dans le style des annales de l'étudiant.
+
+    DEUX RECHERCHES SÉPARÉES, et c'est tout l'intérêt :
+      • dans la collection `exam` (ses BTS blancs) → le STYLE : façon de poser
+        les questions, barème, type de contexte présenté ;
+      • dans la collection `course` (ses cours) → le FOND : les notions.
+
+    Une seule recherche mélangée donnerait un sujet au hasard entre les deux.
+    Là, l'IA imite la forme de SES épreuves en interrogeant SON programme.
+    """
+    fmt = format_for(subject)
+    query = topic or ", ".join(node_titles or []) or fmt.label
+
+    exam_hits = await pipeline.search(
+        user, query, collections=["exam"], subject=subject, top_k=4
+    )
+    course_hits = await pipeline.search(
+        user, query, collections=["course", "note"], subject=subject, top_k=6
+    )
+
+    annales = pipeline.build_context(exam_hits, max_chars=4000)
+    cours = pipeline.build_context(course_hits, max_chars=5000)
+
+    blocks = [
+        f"MATIÈRE : {subject}",
+        f"TYPE D'ÉPREUVE : {fmt.label}",
+        f"MÉTHODE ATTENDUE : {fmt.method}",
+        f"DURÉE : {fmt.duration_minutes} minutes — BARÈME : {fmt.total_points} points",
+    ]
+    if topic:
+        blocks.append(f"THÈME IMPOSÉ : {topic}")
+    if node_titles:
+        blocks.append("NOTIONS À COUVRIR : " + ", ".join(node_titles))
+
+    blocks.append(
+        "### ANNALES (modèle de FORME — ne recopie aucune question)\n"
+        + (annales or "Aucune annale disponible : appuie-toi sur la méthode officielle.")
+    )
+    blocks.append("### COURS (le FOND à interroger)\n" + (cours or "Aucun cours importé."))
+
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.exam_generate)),
+        ChatMessage(role="user", content="\n\n".join(blocks)),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.exam_generate, subject=subject
+    )
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error(
+            "Sujet d'examen non parsable : %s | début de la réponse : %s",
+            exc,
+            completion.text[:300],
+        )
+        return {}
+    if not isinstance(payload, dict) or not payload.get("questions"):
+        # Trace le contenu réel : sans elle, un modèle qui renvoie une
+        # structure inattendue produit une erreur muette côté utilisateur.
+        logger.warning(
+            "Sujet sans questions exploitables | clés=%s | réponse=%s",
+            list(payload.keys()) if isinstance(payload, dict) else type(payload),
+            completion.text[:400],
+        )
+        return {}
+
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    payload["_has_annales"] = bool(exam_hits)
+    payload["_sources"] = _sources_from_hits(exam_hits + course_hits)
+    return payload
+
+
+async def evaluate_exam(
+    *, subject: str, exercise: dict, answer: str
+) -> dict:
+    """Corrige une copie avec la grille de critères de l'épreuve."""
+    fmt = format_for(subject)
+
+    questions = "\n".join(
+        f"{q.get('number', i + 1)}. ({q.get('points', '?')} pts) {q.get('text', '')}"
+        for i, q in enumerate(exercise.get("questions") or [])
+    )
+    prompt = (
+        f"MATIÈRE : {subject}\n"
+        f"TYPE D'ÉPREUVE : {fmt.label}\n"
+        f"BARÈME TOTAL : {exercise.get('total_points', fmt.total_points)} points\n"
+        f"CRITÈRES D'ÉVALUATION :\n"
+        + "\n".join(f"- {c}" for c in fmt.criteria)
+        + f"\n\n### SUJET\n{exercise.get('title', '')}\n"
+        f"{exercise.get('instructions', '')}\n\n"
+        f"{exercise.get('context', '')}\n\n### QUESTIONS\n{questions}\n\n"
+        f"### COPIE DE L'ÉTUDIANT\n{answer[:14000]}"
+    )
+
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.exam_evaluate)),
+        ChatMessage(role="user", content=prompt),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.exam_evaluate, subject=subject
+    )
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Correction non parsable : %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
     payload["_model"] = completion.model
     payload["_mocked"] = completion.mocked
     return payload

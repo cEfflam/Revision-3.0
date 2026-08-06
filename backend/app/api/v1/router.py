@@ -20,6 +20,7 @@ from app.api.v1 import (
     health,
     nodes,
     onboarding,
+    practice,
     roadmap,
     sessions,
     subjects,
@@ -36,5 +37,6 @@ api_router.include_router(nodes.router)
 api_router.include_router(cards.router)
 api_router.include_router(documents.router)
 api_router.include_router(sessions.router)
+api_router.include_router(practice.router)
 api_router.include_router(roadmap.router)
 api_router.include_router(chat.router)

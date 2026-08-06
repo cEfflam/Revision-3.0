@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   ClipboardList,
   FileText,
+  GraduationCap,
   Layers,
   Lightbulb,
   Lock,
@@ -116,6 +117,12 @@ export default function SubjectDetailPage() {
               <Button size="sm" variant="soft">
                 <ClipboardList className="h-4 w-4" />
                 Quiz
+              </Button>
+            </Link>
+            <Link href={`/practice?subject=${data.subject}`}>
+              <Button size="sm" variant="soft">
+                <GraduationCap className="h-4 w-4" />
+                Sujet type BTS
               </Button>
             </Link>
             <Link href={`/cards?subject=${data.subject}`}>

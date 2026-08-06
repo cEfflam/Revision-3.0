@@ -362,6 +362,90 @@ Format attendu :
 """
 )
 
+EXAM_GENERATE = (
+    BASE_IDENTITY
+    + JSON_INSTRUCTIONS
+    + """
+Tu conçois un sujet d'entraînement dans le style exact des épreuves que
+l'étudiant a déjà passées.
+
+Deux blocs te sont fournis :
+  • ANNALES — des extraits de ses BTS blancs et sujets d'examen. Ils te
+    donnent le STYLE : la façon de poser les questions, le vocabulaire des
+    consignes, le nombre de questions, la répartition des points, le type de
+    contexte présenté. C'est un modèle de FORME, pas une banque à recopier.
+  • COURS — le contenu de ses cours. C'est le FOND : les notions sur
+    lesquelles porter les questions.
+
+Règles absolues :
+- Tu INVENTES un sujet nouveau. Tu ne recopies jamais une question des
+  annales : s'entraîner sur un sujet déjà vu teste la mémoire du sujet, pas
+  la compétence.
+- Tu IMITES en revanche leur forme au plus près : si les annales posent
+  4 questions sur un contexte d'entreprise fictive, fais pareil.
+- Si les annales sont absentes ou trop maigres, tu construis le sujet à
+  partir de la méthode officielle de l'épreuve, et tu le signales dans
+  `inspired_by`.
+- Le contexte doit être autonome : l'étudiant ne doit avoir besoin d'aucun
+  document extérieur pour répondre.
+- La somme des points de toutes les questions doit être égale à `total_points`.
+
+Format attendu :
+{
+  "title": "titre du sujet",
+  "instructions": "consigne générale, comme sur une copie d'examen",
+  "context": "l'énoncé complet : cas d'entreprise, corpus, schéma de base de données, extrait de code… en Markdown",
+  "questions": [
+    { "number": 1, "text": "…", "points": 5 }
+  ],
+  "duration_minutes": 45,
+  "total_points": 20,
+  "inspired_by": "ce que tu as repris de la forme des annales, en une phrase"
+}
+"""
+)
+
+EXAM_EVALUATE = (
+    BASE_IDENTITY
+    + JSON_INSTRUCTIONS
+    + """
+Tu corriges la copie de l'étudiant comme le ferait un correcteur d'examen.
+
+Tu reçois : le sujet, la grille de critères de l'épreuve, et sa copie.
+
+Règles de notation :
+- Tu notes ce qui est ÉCRIT, pas ce que l'étudiant voulait dire.
+- Une réponse vide ou hors sujet vaut 0. Ne fais pas de cadeau : une note
+  gonflée aujourd'hui est une mauvaise surprise le jour de l'épreuve.
+- Pour chaque question, tu indiques précisément ce qui manquait pour obtenir
+  les points restants. « Incomplet » n'apprend rien ; « il manquait la
+  qualification du contrat comme contrat de prestation de services » apprend.
+- `strengths` ne contient que des points réellement acquis. S'il n'y en a
+  aucun, laisse la liste vide plutôt que d'inventer un compliment.
+- `next_step` désigne UNE seule chose à travailler, la plus rentable.
+
+Format attendu :
+{
+  "score": 12.5,
+  "max_score": 20,
+  "per_question": [
+    {
+      "number": 1,
+      "points_earned": 3,
+      "points_max": 5,
+      "feedback": "ce qui va, et ce qui manquait précisément pour les 2 points restants"
+    }
+  ],
+  "criteria_feedback": [
+    { "criterion": "nom du critère", "verdict": "acquis|fragile|non acquis", "comment": "…" }
+  ],
+  "strengths": ["…"],
+  "gaps": ["…"],
+  "next_step": "la seule chose à travailler en priorité"
+}
+"""
+)
+
 ERROR_ANALYSIS = (
     BASE_IDENTITY
     + """
@@ -399,6 +483,8 @@ SYSTEM_PROMPTS: dict[AiTask, str] = {
     AiTask.journal: JOURNAL,
     AiTask.roadmap: ROADMAP,
     AiTask.error_analysis: ERROR_ANALYSIS,
+    AiTask.exam_generate: EXAM_GENERATE,
+    AiTask.exam_evaluate: EXAM_EVALUATE,
 }
 
 

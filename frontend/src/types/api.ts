@@ -312,6 +312,73 @@ export interface RoadmapRead {
   mocked: boolean;
 }
 
+// ── Entraînement type examen ──────────────────────────────────────────────
+export interface ExamFormat {
+  subject: string;
+  label: string;
+  /** "text" | "code" | "sql" — pilote le champ de réponse. */
+  input_kind: string;
+  method: string;
+  criteria: string[];
+  duration_minutes: number;
+  total_points: number;
+  placeholder: string;
+}
+
+export interface ExamQuestion {
+  number: number;
+  text: string;
+  points: number;
+}
+
+export interface ExamRead {
+  subject: string;
+  format: ExamFormat;
+  title: string;
+  instructions: string;
+  context: string;
+  questions: ExamQuestion[];
+  duration_minutes: number;
+  total_points: number;
+  inspired_by: string;
+  /** False quand aucune annale n'a servi de modèle de style. */
+  has_annales: boolean;
+  sources: SourceRead[];
+  model: string;
+  mocked: boolean;
+}
+
+export interface QuestionFeedback {
+  number: number;
+  points_earned: number;
+  points_max: number;
+  feedback: string;
+}
+
+export interface CriterionFeedback {
+  criterion: string;
+  verdict: string;
+  comment: string;
+}
+
+export interface ExamEvaluation {
+  score: number;
+  max_score: number;
+  per_question: QuestionFeedback[];
+  criteria_feedback: CriterionFeedback[];
+  strengths: string[];
+  gaps: string[];
+  next_step: string;
+  model: string;
+  mocked: boolean;
+}
+
+export interface PracticeSubject {
+  subject: string;
+  label: string;
+  exam_label: string;
+}
+
 // ── Audit d'écrit (CGE) ───────────────────────────────────────────────────
 /** Types de problèmes détectés — miroir du prompt CGE_ANALYSIS. */
 export type WritingIssueType =
