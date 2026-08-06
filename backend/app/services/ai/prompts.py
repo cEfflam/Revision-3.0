@@ -362,6 +362,50 @@ Format attendu :
 """
 )
 
+NODE_SYNTHESIS = (
+    BASE_IDENTITY
+    + """
+Tu fusionnes TOUT ce que l'étudiant possède sur une notion — cours, fiche de
+révision, annotations, exercices — en une note de synthèse unique.
+
+Cette note deviendra ta propre référence : c'est elle que tu reliras la
+prochaine fois qu'il posera une question sur cette notion. Écris-la donc pour
+toi autant que pour lui : dense, ordonnée, sans redite.
+
+RÈGLES
+- Tu ne racontes QUE ce qui figure dans les sources. Aucun ajout de
+  connaissance générale : si le cours de son professeur définit les choses
+  d'une certaine façon, c'est cette façon qui compte à l'examen.
+- Quand deux sources se contredisent, tu le SIGNALES au lieu de trancher en
+  silence. Une contradiction repérée est une question à poser au professeur.
+- Tu conserves les formulations exactes qui comptent : article de loi,
+  syntaxe, formule, définition officielle. Les paraphraser leur ferait perdre
+  leur valeur en épreuve.
+- Tu ne mets pas de remplissage. Si les sources sont maigres, la synthèse est
+  courte — c'est une information utile en soi.
+
+STRUCTURE (en Markdown, titres de niveau 3)
+### En une phrase
+La définition la plus juste, telle qu'elle sortirait à l'oral.
+
+### À retenir absolument
+3 à 6 puces. Ce qui tombe, ce qui est noté, ce qui sert de fondation.
+
+### Détails qui comptent
+Formules, syntaxes, articles, seuils — cités mot pour mot.
+
+### Pièges classiques
+Les confusions fréquentes, et comment les éviter. Si les sources contiennent
+des exercices ou des corrections, tire-en les erreurs typiques.
+
+### Liens avec le reste
+Ce que cette notion suppose acquis, et ce qu'elle permet d'aborder ensuite.
+
+### Zones d'ombre
+Ce que les sources ne couvrent pas, ou couvrent mal. Vide si tout est clair.
+"""
+)
+
 EXAM_GENERATE = (
     BASE_IDENTITY
     + JSON_INSTRUCTIONS
@@ -485,6 +529,7 @@ SYSTEM_PROMPTS: dict[AiTask, str] = {
     AiTask.error_analysis: ERROR_ANALYSIS,
     AiTask.exam_generate: EXAM_GENERATE,
     AiTask.exam_evaluate: EXAM_EVALUATE,
+    AiTask.node_synthesis: NODE_SYNTHESIS,
 }
 
 

@@ -146,6 +146,7 @@ async def ask(
     subject: str | None = None,
     collections: list[str] | None = None,
     use_rag: bool = True,
+    node_id: int | None = None,
     history: list[ChatMessage] | None = None,
 ) -> AnswerResult:
     """
@@ -155,14 +156,44 @@ async def ask(
     mathématique, conversation en anglais) : chercher dans les documents
     coûterait une vectorisation pour rien.
     """
+    # ── Étage 1 : la synthèse de la notion ───────────────────────────────
+    # Un texte dense et ordonné donne à l'IA un modèle mental propre, là où
+    # six fragments épars se recoupent et se contredisent parfois.
+    synthesis = ""
+    synthesis_title = ""
+    if node_id:
+        from app.models.graph import KnowledgeNode
+
+        node = await db.get(KnowledgeNode, node_id)
+        if node and node.user_id == user.id and node.synthesis:
+            synthesis = node.synthesis
+            synthesis_title = node.title
+
     hits: list[SearchHit] = []
     context = ""
 
     if use_rag:
+        # Quand une notion est ciblée, on NE filtre PAS par matière : ses
+        # documents peuvent être classés ailleurs. Une fiche de révision
+        # couvrant tout le BTS est rangée en « autre », mais reste la
+        # meilleure source sur l'algèbre de Boole. Le filtre par matière
+        # l'écarterait, et la recherche ne remonterait rien.
+        #
+        # En présence d'une synthèse, on réduit le nombre de fragments : le
+        # sens général est déjà couvert, les fragments ne servent plus qu'à
+        # fournir le détail exact (article, syntaxe, formule). Sans cette
+        # réduction, les deux étages s'additionnent et le contexte coûte plus
+        # cher qu'avant — l'inverse du but recherché.
         hits = await pipeline.search(
-            user, question, collections=collections, subject=subject
+            user,
+            question,
+            collections=collections,
+            subject=None if node_id else subject,
+            top_k=3 if synthesis else None,
         )
-        context = pipeline.build_context(hits)
+        context = pipeline.build_context(
+            hits, max_chars=2500 if synthesis else 6000
+        )
 
     messages: list[ChatMessage] = [
         ChatMessage(role="system", content=system_prompt(task))
@@ -171,8 +202,15 @@ async def ask(
         messages.extend(history[-10:])  # fenêtre glissante : 5 échanges
 
     blocks: list[str] = []
+
+    if synthesis:
+        blocks.append(f"### Ma synthèse de « {synthesis_title} »\n{synthesis}")
+
+    # ── Étage 2 : les fragments bruts ────────────────────────────────────
+    # Conservés malgré la synthèse : celle-ci est lossy et perd l'article de
+    # loi exact ou la syntaxe précise. Les deux étages sont complémentaires.
     if context:
-        blocks.append(f"### Extraits de mes documents\n{context}")
+        blocks.append(f"### Extraits exacts de mes documents\n{context}")
 
     # L'état de l'apprenant est ajouté à chaque échange : c'est ce qui permet
     # à l'IA de calibrer son niveau d'explication au lieu de répondre pareil
@@ -378,6 +416,81 @@ async def generate_roadmap(
     payload["_model"] = completion.model
     payload["_mocked"] = completion.mocked
     return payload
+
+
+#: Plafond de matière envoyée pour une synthèse. Au-delà, le modèle survole et
+#: la synthèse perd en précision — mieux vaut découper la notion en deux.
+MAX_SYNTHESIS_SOURCE_CHARS = 14000
+
+
+async def build_node_synthesis(
+    db: AsyncSession, user: User, node
+) -> tuple[str, int]:
+    """
+    Fusionne tout ce qui est rattaché à une notion en une note unique.
+
+    Renvoie (synthèse, nombre de documents sources). Une chaîne vide signifie
+    qu'il n'y avait rien à synthétiser — cas normal pour une notion du
+    référentiel à laquelle aucun cours n'a encore été rattaché.
+
+    La synthèse ne REMPLACE pas les fragments : elle s'ajoute. Un texte dense
+    donne le sens général, mais perd l'article de loi exact et la syntaxe
+    précise. Les deux étages sont complémentaires.
+    """
+    from app.models.content import Document, DocumentChunk, document_nodes
+
+    documents = (
+        await db.execute(
+            select(Document)
+            .join(document_nodes, document_nodes.c.document_id == Document.id)
+            .where(
+                document_nodes.c.node_id == node.id, Document.user_id == user.id
+            )
+            .order_by(Document.created_at)
+        )
+    ).scalars().all()
+
+    if not documents:
+        return "", 0
+
+    blocks: list[str] = []
+    used = 0
+    for document in documents:
+        chunks = (
+            await db.execute(
+                select(DocumentChunk.heading, DocumentChunk.content)
+                .where(DocumentChunk.document_id == document.id)
+                .order_by(DocumentChunk.ordinal)
+            )
+        ).all()
+        for heading, content in chunks:
+            piece = f"[{document.title}{f' — {heading}' if heading else ''}]\n{content}"
+            if used + len(piece) > MAX_SYNTHESIS_SOURCE_CHARS:
+                break
+            blocks.append(piece)
+            used += len(piece)
+        if used >= MAX_SYNTHESIS_SOURCE_CHARS:
+            break
+
+    if not blocks:
+        return "", len(documents)
+
+    prompt = (
+        f"NOTION : {node.title}\n"
+        f"MATIÈRE : {node.subject}\n"
+        + (f"DESCRIPTION : {node.description}\n" if node.description else "")
+        + f"\n### SOURCES ({len(documents)} document(s))\n\n"
+        + "\n\n---\n\n".join(blocks)
+    )
+
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.node_synthesis)),
+        ChatMessage(role="user", content=prompt),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.node_synthesis, subject=node.subject
+    )
+    return completion.text.strip(), len(documents)
 
 
 async def generate_exam(

@@ -65,6 +65,9 @@ async def chat(
             task=payload.task,
             subject=subject,
             use_rag=use_rag,
+            # Déclenche le premier étage : si la notion a une synthèse, elle
+            # est fournie avant les fragments bruts.
+            node_id=payload.node_id,
             history=[
                 ChatMessage(role=m.role, content=m.content) for m in payload.history
             ],

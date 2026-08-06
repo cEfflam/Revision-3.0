@@ -62,6 +62,20 @@ class NodeRead(BaseModel):
     position: int = 0
 
 
+class NodeSynthesisRead(BaseModel):
+    """La note consolidée d'une notion."""
+
+    node_id: int
+    node_title: str
+    synthesis: str = ""
+    source_count: int = 0
+    updated_at: datetime | None = None
+    #: True quand des documents ont été rattachés depuis la génération : la
+    #: synthèse ignore alors une partie de ce qui est disponible.
+    is_stale: bool = False
+    linked_documents: int = 0
+
+
 class CurriculumNode(NodeRead):
     """Nœud du référentiel, avec ses enfants — pour l'affichage en arbre."""
 

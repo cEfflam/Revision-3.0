@@ -52,6 +52,7 @@ class AiTask(StrEnum):
     summary = "summary"
     mindmap = "mindmap"
     node_suggestions = "node_suggestions"
+    node_synthesis = "node_synthesis"
 
     # ── Moteurs par matière ──────────────────────────────────────────────
     chat = "chat"
@@ -82,6 +83,10 @@ TASK_ROLE: dict[AiTask, ModelRole] = {
     AiTask.summary: ModelRole.language,
     AiTask.mindmap: ModelRole.language,
     AiTask.node_suggestions: ModelRole.language,
+    # La matière décide en réalité (voir role_for) : synthétiser un cours de
+    # droit est de la rédaction, synthétiser un cours de maths demande de ne
+    # pas déformer une formule.
+    AiTask.node_synthesis: ModelRole.language,
     AiTask.chat: ModelRole.language,
     AiTask.english_chat: ModelRole.language,
     AiTask.journal: ModelRole.language,
@@ -130,6 +135,8 @@ TASK_TEMPERATURE: dict[AiTask, float] = {
     AiTask.summary: 0.2,
     AiTask.mindmap: 0.3,
     AiTask.node_suggestions: 0.2,
+    # Très basse : une synthèse doit restituer, pas inventer.
+    AiTask.node_synthesis: 0.15,
     AiTask.chat: 0.5,
     AiTask.explain_code: 0.3,
     AiTask.sql_review: 0.2,
@@ -178,6 +185,9 @@ MAX_TOKENS: dict[AiTask, int] = {
     AiTask.english_chat: 900,
     AiTask.chat: 1400,
     AiTask.node_suggestions: 1400,
+    # Le texte le plus long produit par l'application, et le plus rentable :
+    # généré une fois, relu à chaque question sur la notion.
+    AiTask.node_synthesis: 2500,
     AiTask.flashcards: 2000,
     AiTask.quiz: 2000,
     AiTask.cejm_case: 2000,

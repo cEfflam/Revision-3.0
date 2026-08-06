@@ -93,6 +93,22 @@ class KnowledgeNode(Base, TimestampMixin):
         Integer, default=20, server_default=text("20")
     )
 
+    # ── Synthèse consolidée ──────────────────────────────────────────────
+    # Texte unique fusionnant tout ce que l'utilisateur a importé sur cette
+    # notion : cours, fiche de révision, annotations, exercices. Sert de
+    # contexte PRINCIPAL à l'IA, les fragments bruts venant en appui pour le
+    # détail exact. Six fragments épars qui se recoupent coûtent plus cher et
+    # donnent une vision plus confuse qu'un texte dense et ordonné.
+    synthesis: Mapped[str] = mapped_column(Text, default="")
+    synthesis_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Nombre de documents ayant servi à la construire : si de nouveaux
+    # documents sont rattachés depuis, la synthèse est périmée.
+    synthesis_source_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
+
     last_studied_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -220,6 +220,8 @@ async def search(
         vector=vector,
         user_id=user.id,
         collections=collections or [c.value for c in DocumentCollection],
+        # `or` et non `if is None` : un top_k à 0 n'aurait aucun sens, la
+        # valeur configurée reprend la main.
         top_k=top_k or settings.RAG_TOP_K,
         subject=subject,
         dim=embedder.dim,

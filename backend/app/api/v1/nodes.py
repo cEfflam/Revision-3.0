@@ -9,11 +9,14 @@ validation au lieu du graphe.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.deps import CurrentUser, DbSession
 from app.core.utils import slugify
+from app.models.content import document_nodes
 from app.models.enums import EdgeRelation, NodeStatus, Subject
 from app.models.graph import KnowledgeNode, NodeEdge
 from app.schemas.graph import (
@@ -23,8 +26,11 @@ from app.schemas.graph import (
     GraphRead,
     NodeCreate,
     NodeRead,
+    NodeSynthesisRead,
     NodeUpdate,
 )
+from app.services.ai import service as ai_service
+from app.services.ai.openrouter import AiUnavailable
 from app.services.graph import engine as graph_engine
 
 router = APIRouter(prefix="/nodes", tags=["graphe"])
@@ -340,6 +346,88 @@ async def delete_node(node_id: int, user: CurrentUser, db: DbSession) -> None:
     await db.flush()
     await graph_engine.recompute_locks(db, user.id)
     await db.commit()
+
+
+@router.post(
+    "/{node_id}/synthesis",
+    response_model=NodeSynthesisRead,
+    summary="Construire ma synthèse de cette notion",
+)
+async def build_synthesis(
+    node_id: int, user: CurrentUser, db: DbSession
+) -> NodeSynthesisRead:
+    """
+    Fusionne cours, fiches, annotations et exercices rattachés à la notion en
+    une note unique.
+
+    Générée une fois, relue à chaque question sur la notion : c'est le texte
+    le plus rentable de l'application. Elle sert de contexte principal à
+    l'IA, les fragments bruts restant en appui pour le détail exact.
+    """
+    node = await _get_owned_node(db, user, node_id)
+
+    try:
+        synthesis, sources = await ai_service.build_node_synthesis(db, user, node)
+    except AiUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    if not synthesis:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Aucun document n'est rattaché à « {node.title} ». Importe un "
+                "cours puis rattache-le à cette notion depuis le Brain."
+            ),
+        )
+
+    node.synthesis = synthesis
+    node.synthesis_source_count = sources
+    node.synthesis_updated_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(node)
+
+    return NodeSynthesisRead(
+        node_id=node.id,
+        node_title=node.title,
+        synthesis=node.synthesis,
+        source_count=node.synthesis_source_count,
+        updated_at=node.synthesis_updated_at,
+        is_stale=False,
+    )
+
+
+@router.get(
+    "/{node_id}/synthesis",
+    response_model=NodeSynthesisRead,
+    summary="Lire ma synthèse",
+)
+async def read_synthesis(
+    node_id: int, user: CurrentUser, db: DbSession
+) -> NodeSynthesisRead:
+    node = await _get_owned_node(db, user, node_id)
+
+    # Périmée si des documents ont été rattachés depuis la génération : la
+    # synthèse ignorerait alors une partie de ce que l'utilisateur possède.
+    linked = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(document_nodes)
+                .where(document_nodes.c.node_id == node.id)
+            )
+        ).scalar_one()
+    )
+    return NodeSynthesisRead(
+        node_id=node.id,
+        node_title=node.title,
+        synthesis=node.synthesis,
+        source_count=node.synthesis_source_count,
+        updated_at=node.synthesis_updated_at,
+        is_stale=bool(node.synthesis) and linked != node.synthesis_source_count,
+        linked_documents=linked,
+    )
 
 
 @router.get(
