@@ -60,6 +60,8 @@
 | **Boucle examen → maîtrise** | 84,4 % → 21,1 % après un 0/20, 2 cartes ramenées en file |
 | **Profil dans le prompt** | L'IA reçoit les notions fragiles et acquises à chaque échange |
 | **Synthèse par notion** | Note consolidée citant ses sources, récupération à deux étages |
+| **Relecture IA de la synthèse** | 3 erreurs plantées sur 3 détectées, 0 faux positif |
+| **Décroissance de maîtrise** | Une notion à 85 % il y a 6 mois passe derrière une à 70 % d'hier |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
@@ -161,6 +163,20 @@ une matière d'un modèle à l'autre demande d'éditer le code et de redémarrer
 - [ ] CI GitHub Actions, déploiement VPS, sauvegardes
 
 ---
+
+## 🔍 Problèmes de cohérence identifiés
+
+Revue menée le 2026-08-06, à la demande d'Efflam.
+
+| # | Problème | État |
+| --- | --- | --- |
+| 1 | **La maîtrise ne décroissait jamais.** Une notion validée il y a six mois restait affichée à 90 % et n'était jamais reproposée — alors que c'est celle qu'on a oubliée. Le SRS gérait l'oubli des *cartes*, rien ne gérait celui des *notions*. | ✅ corrigé (demi-vie 90 j) |
+| 2 | **Cartes orphelines.** Les cartes générées depuis un cours n'étaient rattachées à aucune notion : les réviser ne faisait progresser aucune maîtrise. Trou silencieux. | ✅ corrigé |
+| 3 | **Matière incohérente.** Une notion rangée sous un thème gardait sa matière d'origine — « Algèbre de Boole » pouvait se retrouver en CEJM. | ✅ corrigé (héritage du parent) |
+| 4 | **CORS à liste figée.** Next bascule de port quand 3000 est pris ; le navigateur recevait un « Failed to fetch » indistinguable d'un backend éteint. | ✅ corrigé (tout localhost en dev) |
+| 5 | **`readiness` du dashboard = moyenne plate** sur les 55 notions, dont la plupart jamais touchées. Le chiffre bouge à peine et ignore les coefficients d'épreuve. | ⚠️ à revoir |
+| 6 | **Le verrouillage est à sens unique.** `recompute_locks` ne verrouille que les nœuds jamais travaillés : une notion entamée ne se re-verrouille plus si ses prérequis s'effondrent. Défendable, mais à assumer explicitement. | ⚠️ à trancher |
+| 7 | **La boucle examen dépend du client.** `target_node_ids` transite par le navigateur : un client qui ne renvoie pas l'objet intact casse silencieusement la rétroaction. Acceptable en mono-utilisateur, fragile sinon. | ⚠️ noté |
 
 ## 🧾 Dette technique
 
