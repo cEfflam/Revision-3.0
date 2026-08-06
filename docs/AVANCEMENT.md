@@ -49,6 +49,11 @@
 | **Gestion des cartes** | Correction, suspension (sort de la file), suppression |
 | **Entraînement type BTS** | Sujet CEJM généré dans le style d'une vraie annale, corrigé 0/20 puis 2/20 avec justification par question |
 | **IA réelle** | Qwen 0,000036 $/appel · DeepSeek 0,000127 $ (332 jetons de réflexion) |
+| **Structure des PDF** | 0/211 fragments titrés → **182/182** sur une fiche de 1,3 Mo |
+| **Anti-doublon au graphe** | 2ᵉ import du même document : 0 notion inconnue |
+| **Référentiel hiérarchique** | Matière > Thème > Notion, cycles refusés |
+| **Boucle examen → maîtrise** | 84,4 % → 21,1 % après un 0/20, 2 cartes ramenées en file |
+| **Profil dans le prompt** | L'IA reçoit les notions fragiles et acquises à chaque échange |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
@@ -78,6 +83,25 @@
 > Le programme du BTS est fixe et connu ; le deviner à chaque import produit
 > des doublons et une granularité incohérente. L'IA aide à *ranger* dans ce
 > squelette, elle ne le fabrique pas.
+
+### 1ter. Synthèse consolidée par notion — **idée forte, à construire**
+*Proposée le 2026-08-06.* Aujourd'hui le RAG rassemble 4 à 6 fragments épars à
+chaque question. L'idée : produire **une note de synthèse par notion**, qui
+fusionne cours + fiche de révision + annotations + exercices en un texte dense
+et cohérent, stocké sur le nœud.
+
+- [ ] Champ `synthesis` sur `KnowledgeNode`
+- [ ] Génération depuis tous les documents rattachés à la notion
+- [ ] Utilisée comme contexte principal ; les fragments bruts restent en appui
+- [ ] Régénération quand un document rattaché change
+
+> **Pourquoi c'est meilleur** : un texte de 800 jetons cohérent bat six
+> fragments de 300 jetons qui se recoupent et se contredisent parfois. Moins
+> de jetons, et l'IA a un modèle mental propre de la notion.
+>
+> **Le piège à éviter** : une synthèse est *lossy*. Il faut garder les
+> fragments bruts pour les détails (un article de loi exact, une syntaxe
+> précise) — d'où une récupération à deux étages, pas un remplacement.
 
 ### 2. Technique Feynman — écran dédié
 *Idée notée le 2026-08-06.* Seule des quatre méthodes à n'être que partielle.
