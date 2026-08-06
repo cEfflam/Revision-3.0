@@ -150,6 +150,24 @@ async def generate_cards(
             detail="Fournis un `document_id` ou un `text` non vide.",
         )
 
+    # Rattachement automatique à la notion du document.
+    #
+    # Sans ça, les cartes générées depuis un cours flottaient sans nœud : les
+    # réviser ne faisait progresser aucune maîtrise, et le graphe restait figé
+    # alors que l'utilisateur travaillait. Un trou silencieux, donc le pire.
+    #
+    # On ne devine QUE si le document est rattaché à une seule notion. À
+    # plusieurs, l'association serait arbitraire — mieux vaut laisser vide et
+    # que l'utilisateur range lui-même.
+    node_id = payload.node_id
+    if node_id is None and document is not None and len(document.nodes) == 1:
+        node_id = document.nodes[0].id
+        logger.info(
+            "Cartes rattachées automatiquement à la notion %s (document %s)",
+            node_id,
+            document.id,
+        )
+
     drafts = await ai_service.generate_flashcards(
         source_text, count=payload.count, subject=subject
     )
@@ -163,7 +181,7 @@ async def generate_cards(
     for draft in drafts:
         card = Card(
             user_id=user.id,
-            node_id=payload.node_id,
+            node_id=node_id,
             document_id=document.id if document else None,
             kind=draft.kind,
             front=draft.front,

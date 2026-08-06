@@ -236,14 +236,47 @@ async def weak_prerequisites(
     return list(rows.scalars().all())
 
 
+# Demi-vie de la maîtrise d'une notion laissée de côté. À 90 jours, une notion
+# à 80 % retombe à 40 % si elle n'est pas retravaillée.
+#
+# Pourquoi c'est nécessaire : la maîtrise stockée est un instantané. Sans
+# décroissance, une notion validée il y a six mois reste affichée à 90 % et
+# n'est jamais reproposée — alors que c'est précisément celle qu'on a oubliée.
+# Le SRS gère l'oubli au niveau des CARTES ; rien ne le gérait au niveau des
+# NOTIONS.
+MASTERY_HALF_LIFE_DAYS = 90.0
+
+
+def effective_mastery(node: KnowledgeNode, now: datetime | None = None) -> float:
+    """
+    Maîtrise corrigée de l'oubli écoulé depuis la dernière séance.
+
+    Ne modifie rien en base : c'est une lecture. La valeur stockée reste la
+    performance réellement constatée, la valeur effective sert à décider quoi
+    proposer aujourd'hui.
+    """
+    if not node.last_studied_at or node.mastery <= 0:
+        return node.mastery
+
+    now = now or datetime.now(UTC)
+    elapsed = (now - node.last_studied_at).total_seconds() / 86400.0
+    if elapsed <= 0:
+        return node.mastery
+
+    import math
+
+    return round(node.mastery * math.exp(-elapsed / MASTERY_HALF_LIFE_DAYS), 4)
+
+
 async def recommended_nodes(
     db: AsyncSession, user_id: int, *, limit: int = 5
 ) -> list[KnowledgeNode]:
     """
     Prochaines notions à travailler, triées par priorité.
 
-    Score = (1 − maîtrise) × urgence
-      • (1 − maîtrise) : ce qui est déjà su ne rapporte rien.
+    Score = (1 − maîtrise effective) × urgence
+      • la maîtrise EFFECTIVE tient compte du temps écoulé : une notion à 85 %
+        travaillée il y a six mois vaut moins qu'une notion à 70 % revue hier.
       • urgence : ×2 pour un nœud `critical` (régression détectée), ×1.4 pour
         un nœud `learning` (déjà entamé, on finit avant d'ouvrir un front),
         ×1 sinon. Les nœuds `locked` sont exclus : les attaquer sans leurs
@@ -262,8 +295,9 @@ async def recommended_nodes(
         NodeStatus.critical.value: 2.0,
         NodeStatus.learning.value: 1.4,
     }
+    now = datetime.now(UTC)
     nodes.sort(
-        key=lambda n: (1 - n.mastery) * urgency.get(n.status, 1.0),
+        key=lambda n: (1 - effective_mastery(n, now)) * urgency.get(n.status, 1.0),
         reverse=True,
     )
     return nodes[:limit]
