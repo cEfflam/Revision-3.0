@@ -2,7 +2,12 @@
 
 > Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-06**.
 
-**Global : ~88 %** du cahier des charges. **IA branchée en réel** (Qwen + DeepSeek).
+**Global : ~92 %** du cahier des charges. **IA branchée en réel** (Qwen + DeepSeek).
+
+> ⚙️ **Application mono-utilisateur.** Conçue pour un seul apprenant. La mise
+> en ligne servira à y accéder depuis plusieurs appareils, pas à ouvrir des
+> comptes. Ça simplifie beaucoup : pas de quotas, pas de partage, et le
+> « profil apprenant » injecté dans les prompts est toujours le même.
 
 | Phase | État | Détail |
 | --- | --- | --- |
@@ -54,6 +59,7 @@
 | **Référentiel hiérarchique** | Matière > Thème > Notion, cycles refusés |
 | **Boucle examen → maîtrise** | 84,4 % → 21,1 % après un 0/20, 2 cartes ramenées en file |
 | **Profil dans le prompt** | L'IA reçoit les notions fragiles et acquises à chaque échange |
+| **Synthèse par notion** | Note consolidée citant ses sources, récupération à deux étages |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
@@ -84,24 +90,30 @@
 > des doublons et une granularité incohérente. L'IA aide à *ranger* dans ce
 > squelette, elle ne le fabrique pas.
 
-### 1ter. Synthèse consolidée par notion — **idée forte, à construire**
-*Proposée le 2026-08-06.* Aujourd'hui le RAG rassemble 4 à 6 fragments épars à
-chaque question. L'idée : produire **une note de synthèse par notion**, qui
-fusionne cours + fiche de révision + annotations + exercices en un texte dense
-et cohérent, stocké sur le nœud.
+### 1ter. ✅ Synthèse consolidée par notion — **livrée le 2026-08-06**
 
-- [ ] Champ `synthesis` sur `KnowledgeNode`
-- [ ] Génération depuis tous les documents rattachés à la notion
-- [ ] Utilisée comme contexte principal ; les fragments bruts restent en appui
-- [ ] Régénération quand un document rattaché change
+- [x] Champs `synthesis`, `synthesis_updated_at`, `synthesis_source_count` (migration 0005)
+- [x] `POST /nodes/{id}/synthesis` — fusionne tous les documents rattachés
+- [x] Récupération à **deux étages** : synthèse pour le sens, 3 fragments bruts pour le détail exact
+- [x] Détection de péremption : si des documents ont été rattachés depuis
+- [ ] Régénération automatique quand un document change *(manuelle pour l'instant)*
+- [ ] Bouton dans l'interface *(API seule pour l'instant)*
 
-> **Pourquoi c'est meilleur** : un texte de 800 jetons cohérent bat six
-> fragments de 300 jetons qui se recoupent et se contredisent parfois. Moins
-> de jetons, et l'IA a un modèle mental propre de la notion.
+**Mesuré** sur « Les opérateurs logiques fondamentaux » :
+
+| | Fragments seuls | Synthèse + 3 fragments |
+| --- | ---: | ---: |
+| Jetons | 2 056 | **1 986** |
+| Sources | 6 (qui se recoupent) | 3 (précises) |
+
+> **Honnêteté sur le gain** : l'économie de jetons est marginale (3 %). Le vrai
+> bénéfice est ailleurs — l'IA reçoit un modèle mental *ordonné* de la notion
+> plutôt que six extraits qui se chevauchent, et les fragments restants
+> servent au détail exact. Le gain devient net quand la recherche vectorielle
+> échoue : la synthèse répond alors seule, là où le RAG seul rendait 0 source.
 >
-> **Le piège à éviter** : une synthèse est *lossy*. Il faut garder les
-> fragments bruts pour les détails (un article de loi exact, une syntaxe
-> précise) — d'où une récupération à deux étages, pas un remplacement.
+> **Le piège évité** : une synthèse est *lossy*. Les fragments bruts sont
+> conservés pour l'article de loi exact et la syntaxe précise.
 
 ### 2. Technique Feynman — écran dédié
 *Idée notée le 2026-08-06.* Seule des quatre méthodes à n'être que partielle.
