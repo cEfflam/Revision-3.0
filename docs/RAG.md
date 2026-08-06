@@ -74,16 +74,44 @@ Le tout est orchestré par **`services/rag/pipeline.py`**.
 
 ### ① Extraction — `services/rag/extractors.py`
 
+> **Point important : les modèles ne lisent jamais ton PDF.** Ni Qwen ni
+> DeepSeek ne reçoivent le fichier. Tout se passe **en local, gratuitement**,
+> avant le moindre appel réseau : le PDF est converti en texte par `pypdf`
+> dans le conteneur, découpé, puis vectorisé par fastembed — lui aussi local.
+> Seuls partent à l'IA les 4 à 6 fragments retenus par la recherche, soit
+> quelques milliers de caractères sur un document qui peut en faire 150 000.
+>
+> **Convertir toi-même en .txt ne ferait donc économiser aucun jeton.** Ça
+> ferait même perdre : la mise en page du PDF (titres, numérotation) sert à
+> reconstruire la structure, et un copier-coller la détruit.
+
 Convertit n'importe quel format en **Markdown**. Ce n'est pas cosmétique :
 les titres `#` sont le signal dont l'étape suivante se sert pour couper au bon
 endroit.
 
 | Format | Outil | Particularité |
 | --- | --- | --- |
-| PDF | `pypdf` | Chaque page devient `## Page N` — ça permet de citer « page 12 » |
+| PDF | `pypdf` | Structure reconstruite : « Chapitre 5 : … » et « 9. Titre : » redeviennent des titres. Sommaire et numéros de page supprimés. |
 | DOCX | `python-docx` | Les styles Word « Titre 1/2/3 » deviennent `#`, `##`, `###` |
-| MD / TXT | — | Tel quel, avec détection d'encodage (UTF-8 puis CP1252) |
+| MD | — | Tel quel : le fichier porte déjà sa syntaxe |
+| TXT | — | Même reconstruction de titres que pour un PDF |
 | Images | ❌ | OCR pas encore fait — un PDF scanné est refusé avec un message clair |
+
+**Mesuré sur une fiche de révision BTS SIO de 1,3 Mo :**
+
+| | Avant reconstruction | Après |
+| --- | ---: | ---: |
+| Fragments avec un vrai titre | 0 / 211 | **182 / 182** |
+| Caractères indexés | 174 053 | 141 058 |
+
+Les 33 000 caractères en moins sont du sommaire et des numéros de page :
+du bruit qui polluait l'index sans rien apporter.
+
+**Ce qui résiste encore :** les tableaux d'un PDF perdent leur structure et
+deviennent une suite de mots. Une liste de verbes irréguliers en trois
+colonnes ressort en « knew known connaître lay laid laid poser ». C'est
+lisible par l'IA mais peu exploitable — pour ce type de contenu, un fichier
+Markdown écrit à la main donne un bien meilleur résultat.
 
 ### ② Découpage — `services/rag/splitter.py`
 

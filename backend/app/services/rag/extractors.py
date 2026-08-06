@@ -76,6 +76,11 @@ def _decode(data: bytes) -> str:
 
 def _extract_plain(data: bytes, filename: str) -> ExtractedDocument:
     text = _clean(_decode(data))
+    # Un .md est censé porter sa propre syntaxe : on n'y touche pas, au risque
+    # sinon de créer des titres concurrents de ceux de l'auteur. Un .txt, lui,
+    # n'a aucune structure — même traitement que pour un PDF.
+    if Path(filename).suffix.lower() in TEXT_EXTENSIONS:
+        text = _promote_headings(text)
     return ExtractedDocument(
         text=text, detected_title=_first_heading(text) or Path(filename).stem
     )
@@ -105,11 +110,12 @@ def _extract_pdf(data: bytes, filename: str) -> ExtractedDocument:
         except Exception:
             logger.warning("Page %s illisible dans %s", index, filename)
             content = ""
-        content = _clean(content)
+        content = _promote_headings(_clean(content))
         if content:
-            # Le marqueur de page devient un titre : il sert de repère de
-            # coupe et permet de citer la source (« page 12 »).
-            parts.append(f"## Page {index}\n\n{content}")
+            # La page n'est plus un titre mais un simple repère : les vrais
+            # titres viennent d'être reconstruits par _promote_headings, et
+            # deux niveaux de « Page N » écraseraient cette hiérarchie.
+            parts.append(f"<!-- page {index} -->\n{content}")
 
     if not parts:
         raise UnsupportedDocument(
@@ -169,6 +175,48 @@ def _extract_docx(data: bytes, filename: str) -> ExtractedDocument:
     return ExtractedDocument(
         text=text, detected_title=_first_heading(text) or Path(filename).stem
     )
+
+
+# ── Reconstruction de la structure d'un PDF ──────────────────────────────
+# Un PDF ne contient aucune notion de « titre » : pypdf en sort un flot de
+# lignes. Sans traitement, chaque fragment n'a pour tout contexte que
+# « Page 24 » — inutilisable pour citer une source ou cibler une recherche.
+# Ces motifs retrouvent la hiérarchie que l'œil humain lit d'un coup.
+
+#: « Chapitre 5 : L'organisation de l'activité » → titre de niveau 2
+_CHAPTER_RE = re.compile(
+    r"^(?:chapitre|partie|module|dossier)\s+[\dIVX]+\s*[:.\-–]?\s*(.{3,90})$",
+    flags=re.IGNORECASE,
+)
+#: « 9. Les différents processus de l'entreprise : » → titre de niveau 3
+_NUMBERED_RE = re.compile(r"^\d{1,2}[.)]\s+(.{3,90}?)\s*:\s*$")
+#: Ligne de sommaire « Chapitre 5 ...................... 60 » : à supprimer.
+#: Réindexer un sommaire pollue la recherche avec des entrées sans contenu.
+_TOC_RE = re.compile(r"\.{5,}\s*\d{1,4}\s*$")
+#: Ligne ne contenant qu'un numéro de page.
+_PAGE_NUMBER_RE = re.compile(r"^\d{1,4}$")
+
+
+def _promote_headings(text: str) -> str:
+    """Transforme les repères visuels d'un PDF en titres Markdown."""
+    lines: list[str] = []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line or _PAGE_NUMBER_RE.match(line) or _TOC_RE.search(line):
+            continue
+
+        chapter = _CHAPTER_RE.match(line)
+        if chapter:
+            lines.append(f"## {chapter.group(1).strip(' :')}")
+            continue
+
+        numbered = _NUMBERED_RE.match(line)
+        if numbered:
+            lines.append(f"### {numbered.group(1).strip()}")
+            continue
+
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _clean(text: str) -> str:
