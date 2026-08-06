@@ -220,6 +220,109 @@ async def suggest_nodes(text: str, *, subject: str = Subject.other.value) -> lis
     return [n for n in nodes if isinstance(n, dict) and n.get("slug")]
 
 
+async def generate_quiz(
+    text: str, *, count: int = 5, subject: str = Subject.other.value
+) -> list[dict]:
+    """
+    Produit un quiz de vérification. Retourne des dictionnaires bruts validés
+    a minima : l'endpoint se charge de les couler dans le schéma Pydantic.
+    """
+    if not text.strip():
+        return []
+
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.quiz)),
+        ChatMessage(
+            role="user",
+            content=(
+                f"Matière : {subject}\n"
+                f"Génère {count} questions à partir de ce contenu.\n\n{text[:8000]}"
+            ),
+        ),
+    ]
+    completion = await get_ai_client().complete(messages, task=AiTask.quiz)
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Réponse quiz non parsable : %s", exc)
+        return []
+
+    raw = payload.get("questions", payload) if isinstance(payload, dict) else payload
+    if not isinstance(raw, list):
+        return []
+
+    questions: list[dict] = []
+    for item in raw[:count]:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question", "")).strip()
+        if not question:
+            continue
+        choices = [str(c) for c in (item.get("choices") or []) if str(c).strip()]
+        answer_index = item.get("answer_index", -1)
+        # Un index hors bornes rendrait la question incorrigible côté client :
+        # on la bascule alors en question ouverte plutôt que de la jeter.
+        if not isinstance(answer_index, int) or not (
+            0 <= answer_index < len(choices)
+        ):
+            answer_index, choices = -1, []
+        questions.append(
+            {
+                "question": question,
+                "kind": "mcq" if choices else "open",
+                "choices": choices,
+                "answer_index": answer_index,
+                "explanation": str(item.get("explanation", "")).strip(),
+            }
+        )
+    return questions
+
+
+async def generate_roadmap(
+    *,
+    objective: str,
+    target_date: str | None,
+    daily_minutes: int,
+    levels: dict[str, int],
+    weak_nodes: list[str],
+    max_steps: int = 12,
+) -> dict:
+    """
+    Construit un parcours ordonné vers un objectif.
+
+    On envoie le niveau déclaré ET les notions fragiles réellement mesurées :
+    sans ces données, le modèle produit un plan de cours générique, exactement
+    ce qu'on trouve déjà gratuitement sur internet.
+    """
+    context = [
+        f"Objectif : {objective}",
+        f"Date cible : {target_date or 'non fixée'}",
+        f"Temps disponible : {daily_minutes} minutes par jour",
+        f"Nombre d'étapes maximum : {max_steps}",
+        "Niveau déclaré par matière : "
+        + (", ".join(f"{k} {v}%" for k, v in levels.items()) or "non renseigné"),
+        "Notions actuellement fragiles : "
+        + (", ".join(weak_nodes) if weak_nodes else "aucune mesurée"),
+    ]
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.roadmap)),
+        ChatMessage(role="user", content="\n".join(context)),
+    ]
+    completion = await get_ai_client().complete(messages, task=AiTask.roadmap)
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Roadmap non parsable : %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    return payload
+
+
 async def analyse_writing(text: str) -> dict:
     """Audit d'un écrit de CGE — renvoie la structure JSON des problèmes."""
     messages = [

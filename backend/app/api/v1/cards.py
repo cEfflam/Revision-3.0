@@ -27,6 +27,9 @@ from app.schemas.learning import (
     CardUpdate,
     GenerateCardsRequest,
     GenerateCardsResponse,
+    QuizQuestion,
+    QuizRequest,
+    QuizResponse,
     ReviewRequest,
     ReviewResponse,
 )
@@ -40,6 +43,8 @@ router = APIRouter(prefix="/cards", tags=["flashcards"])
 # Limite du texte envoyé à l'IA pour générer des cartes. Au-delà, le modèle
 # survole et produit des cartes génériques : mieux vaut plusieurs passes ciblées.
 MAX_SOURCE_CHARS = 8000
+# En dessous, il n'y a pas de quoi construire une question honnête.
+MIN_SOURCE_CHARS = 120
 
 
 async def _get_owned_card(db, user, card_id: int) -> Card:
@@ -74,6 +79,9 @@ async def read_queue(
     db: DbSession,
     limit: int = Query(default=20, ge=1, le=100),
     subject: Subject | None = None,
+    node_id: int | None = Query(
+        default=None, description="Cibler une seule notion (mode Focus)."
+    ),
     interleave: bool = Query(
         default=True,
         description="Alterner les matières (recommandé : meilleure rétention).",
@@ -84,6 +92,7 @@ async def read_queue(
         user.id,
         limit=limit,
         subject=subject.value if subject else None,
+        node_id=node_id,
         interleave=interleave,
     )
     return [
@@ -175,6 +184,103 @@ async def generate_cards(
     return GenerateCardsResponse(
         created=len(created),
         cards=[CardRead.model_validate(c) for c in created],
+        model="mock" if mocked else "openrouter",
+        mocked=mocked,
+    )
+
+
+async def _source_text(
+    db, user, *, document_id: int | None, node_id: int | None, fallback: str
+) -> tuple[str, str]:
+    """
+    Rassemble le texte de travail et son étiquette d'origine.
+
+    Trois sources possibles, dans l'ordre de précision : un document précis,
+    une notion (on prend alors ses cartes existantes), ou du texte collé.
+    """
+    if document_id:
+        document = await db.get(Document, document_id)
+        if document is None or document.user_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Document introuvable."
+            )
+        chunks = (
+            await db.execute(
+                select(DocumentChunk.content)
+                .where(DocumentChunk.document_id == document.id)
+                .order_by(DocumentChunk.ordinal)
+            )
+        ).scalars().all()
+        return "\n\n".join(chunks)[:MAX_SOURCE_CHARS], document.title
+
+    if node_id:
+        node = await db.get(KnowledgeNode, node_id)
+        if node is None or node.user_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Notion introuvable."
+            )
+        rows = (
+            await db.execute(
+                select(Card.front, Card.back)
+                .where(Card.user_id == user.id, Card.node_id == node.id)
+                .limit(40)
+            )
+        ).all()
+        material = "\n".join(f"{front} → {back}" for front, back in rows)
+        body = f"{node.description}\n{material}".strip()
+        # Une notion sans description ni cartes ne contient rien à interroger :
+        # générer quand même produirait des questions sur le seul titre, ce qui
+        # décrédibilise la fonctionnalité entière.
+        if len(body) < MIN_SOURCE_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"« {node.title} » n'a pas encore de contenu exploitable. "
+                    "Importe un cours sur cette notion ou génère-lui des cartes "
+                    "avant de lancer un quiz."
+                ),
+            )
+        return f"{node.title}\n{body}"[:MAX_SOURCE_CHARS], node.title
+
+    return fallback.strip()[:MAX_SOURCE_CHARS], "texte libre"
+
+
+@router.post("/quiz", response_model=QuizResponse, summary="Générer un quiz")
+async def generate_quiz(
+    payload: QuizRequest, user: CurrentUser, db: DbSession
+) -> QuizResponse:
+    """
+    Quiz de vérification, généré à la demande et **non persisté**.
+
+    C'est délibéré : un quiz est un contrôle ponctuel. Le conserver
+    reviendrait à réviser les mêmes questions par cœur, ce qui teste la
+    mémoire des questions et non la compréhension. Ce qui doit durer, ce sont
+    les cartes SRS — elles, sont en base.
+    """
+    source_text, label = await _source_text(
+        db,
+        user,
+        document_id=payload.document_id,
+        node_id=payload.node_id,
+        fallback=payload.text,
+    )
+    if not source_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fournis un document, une notion, ou un texte.",
+        )
+
+    questions = await ai_service.generate_quiz(source_text, count=payload.count)
+    if not questions:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="L'IA n'a produit aucune question exploitable. Réessaie.",
+        )
+
+    mocked = get_ai_client().is_mocked
+    return QuizResponse(
+        questions=[QuizQuestion(**q) for q in questions],
+        source=label,
         model="mock" if mocked else "openrouter",
         mocked=mocked,
     )

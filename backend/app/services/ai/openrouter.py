@@ -256,8 +256,9 @@ def parse_json_response(text: str) -> Any:
 def _mock_completion(
     task: AiTask, messages: list[ChatMessage], *, tier: str
 ) -> Completion:
-    source = messages[-1].content if messages else ""
-    text = _MOCK_BUILDERS.get(task, _mock_generic)(source)
+    text = _MOCK_BUILDERS.get(task, _mock_generic)(
+        _mock_source(messages[-1].content if messages else "")
+    )
     return Completion(
         text=text,
         model="mock",
@@ -265,6 +266,28 @@ def _mock_completion(
         latency_ms=5,
         mocked=True,
     )
+
+
+def _mock_source(content: str) -> str:
+    """
+    Isole le contenu réel des consignes qui le précèdent.
+
+    Les messages utilisateur suivent tous le même gabarit :
+
+        Matière : sql
+        Génère 5 questions à partir de ce contenu.
+
+        <le vrai contenu>
+
+    Sans ce découpage, le mode simulé fabrique des questions à partir de la
+    consigne elle-même — « À propos de "Génère 5 questions…" » — et la
+    fonctionnalité paraît cassée alors qu'elle marche.
+
+    Pas de repli sur le message complet si le contenu est court : mieux vaut
+    un mock pauvre qu'un mock trompeur.
+    """
+    _, separator, body = content.partition("\n\n")
+    return (body if separator else content).strip()
 
 
 def _sentences(text: str, limit: int = 8) -> list[str]:
