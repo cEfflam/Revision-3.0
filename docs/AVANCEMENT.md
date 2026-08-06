@@ -2,7 +2,8 @@
 
 > Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-06**.
 
-**Global : ~92 %** du cahier des charges. **IA branchée en réel** (Qwen + DeepSeek).
+**Global : ~96 %** du cahier des charges. **IA branchée en réel** (Qwen + DeepSeek).
+Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
 
 > ⚙️ **Application mono-utilisateur.** Conçue pour un seul apprenant. La mise
 > en ligne servira à y accéder depuis plusieurs appareils, pas à ouvrir des
@@ -62,6 +63,8 @@
 | **Synthèse par notion** | Note consolidée citant ses sources, récupération à deux étages |
 | **Relecture IA de la synthèse** | 3 erreurs plantées sur 3 détectées, 0 faux positif |
 | **Décroissance de maîtrise** | Une notion à 85 % il y a 6 mois passe derrière une à 70 % d'hier |
+| **Arbre du référentiel éditable** | Thème créé, notion déplacée, « À classer » vidé — au navigateur |
+| **Synthèse + relecture dans l'UI** | Génération, affichage, relecture « fiable / 0 remarque » |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
@@ -77,15 +80,22 @@
 - [x] Session ciblée `?subject=` ou `?node=` avec chronomètre `?focus=`
 - [x] Quiz généré sur la matière ou le cours sélectionné
 
-### 1bis. Écran d'édition du référentiel — **la suite immédiate**
-*Décidé le 2026-08-06.* L'API est complète, l'interface manque.
+### 1bis. ✅ Écran d'édition du référentiel — **livré le 2026-08-06**
 
 - [x] Hiérarchie `Matière > Thème > Notion` en base (`parent_id`, migration 0004)
 - [x] `GET /subjects/{matière}/curriculum` — l'arbre, avec les notions « à classer »
 - [x] `PATCH /nodes/{id}` avec `parent_id` — ranger, sortir, refuser les cycles
 - [x] Rattachement d'un document à des notions existantes (anti-doublon)
-- [ ] **Écran d'arbre éditable** : créer un thème, y glisser des notions, renommer
+- [x] **Arbre éditable** dans `/subjects/[matière]`, onglet « Mon référentiel » :
+      créer un thème, ajouter une notion, renommer, déplacer, supprimer
+- [x] Panneau de synthèse + relecture IA au clic sur une notion
+- [x] Panneau de rattachement branché dans le Brain *(il était écrit, jamais utilisé)*
 - [ ] Restreindre la recherche RAG au thème en cours de travail
+
+> **Déplacement par sélection, pas par glisser-déposer** : sur un arbre à
+> plusieurs niveaux, le glisser-déposer est pénible au doigt et ambigu
+> (dépose-t-on *dans* le thème ou *à côté* ?). Deux clics explicites valent
+> mieux qu'un geste approximatif.
 
 > **Décision structurante :** le référentiel est **écrit à la main**, pas généré.
 > Le programme du BTS est fixe et connu ; le deviner à chaque import produit
@@ -138,6 +148,16 @@ les **thèmes exacts du programme**, chacun avec sa méthode de révision propre
 
 - [ ] Détailler le référentiel matière par matière
 - [ ] Associer à chaque type de nœud sa méthode d'entraînement
+
+### 3bis. Assistant de premier lancement — *après les 100 %*
+*Demandé le 2026-08-06.* Aujourd'hui, démarrer suppose d'éditer un `.env` à la
+main. Pour une application qu'on télécharge et qu'on lance, c'est une barrière.
+
+- [ ] Détection du premier démarrage (aucun utilisateur en base)
+- [ ] Écran web : saisie de la clé OpenRouter, choix des deux modèles, test
+      de connexion immédiat
+- [ ] Écriture des réglages en base plutôt que dans le `.env`
+- [ ] Variante ligne de commande pour le même parcours
 
 ### 4. Écran de réglages dans l'application
 *Demandé le 2026-08-05.* Aujourd'hui, ajuster un plafond de jetons ou basculer
