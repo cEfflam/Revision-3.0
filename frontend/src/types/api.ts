@@ -312,6 +312,55 @@ export interface RoadmapRead {
   mocked: boolean;
 }
 
+// ── Référentiel (Matière > Thème > Notion) ────────────────────────────────
+export interface CurriculumNode extends NodeRead {
+  children: CurriculumNode[];
+  documents_count: number;
+  cards_count: number;
+}
+
+export interface CurriculumRead {
+  subject: string;
+  label: string;
+  themes: CurriculumNode[];
+  /** Notions sans thème parent — un trou visible plutôt que silencieux. */
+  orphans: CurriculumNode[];
+}
+
+// ── Synthèse d'une notion ─────────────────────────────────────────────────
+export interface NodeSynthesis {
+  node_id: number;
+  node_title: string;
+  synthesis: string;
+  source_count: number;
+  updated_at: string | null;
+  /** True si des documents ont été rattachés depuis la génération. */
+  is_stale: boolean;
+  linked_documents: number;
+}
+
+export interface SynthesisRemark {
+  /** "erreur" | "imprecision" | "manque" | "methode" */
+  type: string;
+  /** "haute" | "moyenne" | "faible" */
+  confidence: string;
+  quote: string;
+  detail: string;
+  suggestion: string;
+}
+
+export interface SynthesisReview {
+  node_id: number;
+  node_title: string;
+  /** "fidele" | "a_preciser" | "erreur_detectee" */
+  verdict: string;
+  remarks: SynthesisRemark[];
+  summary: string;
+  reviewed_at: string | null;
+  model: string;
+  mocked: boolean;
+}
+
 // ── Rattachement document ↔ notions ───────────────────────────────────────
 export interface NodeProposal {
   title: string;

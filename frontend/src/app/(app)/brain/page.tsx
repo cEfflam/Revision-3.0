@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FileText,
   Loader2,
+  Network,
   Search,
   Sparkles,
   Trash2,
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DocumentMappingPanel } from "@/components/document-mapping";
 
 const COLLECTIONS = [
   { value: "course", label: "Cours" },
@@ -49,6 +51,7 @@ export default function BrainPage() {
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [generatingId, setGeneratingId] = useState<number | null>(null);
+  const [mappingId, setMappingId] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => {
@@ -268,42 +271,64 @@ export default function BrainPage() {
             </p>
           )}
           {documents.map((doc) => (
-            <div key={doc.id} className="action-row cursor-default">
-              <span className="icon-tile">
-                <FileText className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-bold text-slate-800">
-                  {doc.title}
+            <div key={doc.id} className="flex flex-col gap-2">
+              <div className="action-row cursor-default">
+                <span className="icon-tile">
+                  <FileText className="h-5 w-5" />
                 </span>
-                <span className="block text-sm font-medium text-slate-400">
-                  {SUBJECT_LABELS[doc.subject] ?? doc.subject} ·{" "}
-                  {doc.chunk_count} fragments ·{" "}
-                  {(doc.size_bytes / 1024).toFixed(0)} Ko
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold text-slate-800">
+                    {doc.title}
+                  </span>
+                  <span className="block text-sm font-medium text-slate-400">
+                    {SUBJECT_LABELS[doc.subject] ?? doc.subject} ·{" "}
+                    {doc.chunk_count} fragments ·{" "}
+                    {(doc.size_bytes / 1024).toFixed(0)} Ko
+                  </span>
                 </span>
-              </span>
-              <Badge tone={STATUS_TONES[doc.status] ?? "slate"}>
-                {doc.status}
-              </Badge>
-              <button
-                onClick={() => generateCards(doc)}
-                disabled={generatingId === doc.id}
-                title="Générer des flashcards"
-                className="rounded-xl p-2 text-indigo-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-              >
-                {generatingId === doc.id ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-5 w-5" />
-                )}
-              </button>
-              <button
-                onClick={() => remove(doc)}
-                title="Supprimer"
-                className="rounded-xl p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
-              >
-                <Trash2 className="h-5 w-5" />
-              </button>
+                <Badge tone={STATUS_TONES[doc.status] ?? "slate"}>
+                  {doc.status}
+                </Badge>
+                <button
+                  onClick={() =>
+                    setMappingId(mappingId === doc.id ? null : doc.id)
+                  }
+                  title="Rattacher aux notions du graphe"
+                  className="rounded-xl p-2 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                >
+                  <Network className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => generateCards(doc)}
+                  disabled={generatingId === doc.id}
+                  title="Générer des flashcards"
+                  className="rounded-xl p-2 text-indigo-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                >
+                  {generatingId === doc.id ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-5 w-5" />
+                  )}
+                </button>
+                <button
+                  onClick={() => remove(doc)}
+                  title="Supprimer"
+                  className="rounded-xl p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              </div>
+
+              {mappingId === doc.id && (
+                <DocumentMappingPanel
+                  documentId={doc.id}
+                  onClose={() => setMappingId(null)}
+                  onApplied={(text) => {
+                    setMessage({ text, error: false });
+                    reload();
+                  }}
+                />
+              )}
             </div>
           ))}
         </div>

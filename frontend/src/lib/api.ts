@@ -12,10 +12,13 @@ import type {
   CardQueueItem,
   CardRead,
   ChatResponse,
+  CurriculumRead,
   DashboardRead,
   DiagnosisRead,
   DocumentMapping,
   DocumentRead,
+  NodeSynthesis,
+  SynthesisReview,
   EngineInfo,
   ExamEvaluation,
   ExamFormat,
@@ -195,6 +198,40 @@ export const api = {
     request<SessionRead>(`/sessions/${id}/end`, {
       method: "POST",
       json: { cards_reviewed, correct_count },
+    }),
+
+  // ── Référentiel ─────────────────────────────────────────────────────────
+  curriculum: (subject: string) =>
+    request<CurriculumRead>(`/subjects/${subject}/curriculum`),
+  createNode: (payload: {
+    title: string;
+    kind: string;
+    subject: string;
+    parent_id?: number | null;
+    description?: string;
+  }) => request<NodeRead>("/nodes", { method: "POST", json: payload }),
+  updateNode: (
+    nodeId: number,
+    patch: Partial<{
+      title: string;
+      description: string;
+      parent_id: number | null;
+      subject: string;
+      kind: string;
+      mastery: number;
+    }>,
+  ) => request<NodeRead>(`/nodes/${nodeId}`, { method: "PATCH", json: patch }),
+  deleteNode: (nodeId: number) =>
+    request<void>(`/nodes/${nodeId}`, { method: "DELETE" }),
+
+  // ── Synthèse ────────────────────────────────────────────────────────────
+  synthesis: (nodeId: number) =>
+    request<NodeSynthesis>(`/nodes/${nodeId}/synthesis`),
+  buildSynthesis: (nodeId: number) =>
+    request<NodeSynthesis>(`/nodes/${nodeId}/synthesis`, { method: "POST" }),
+  reviewSynthesis: (nodeId: number) =>
+    request<SynthesisReview>(`/nodes/${nodeId}/synthesis/review`, {
+      method: "POST",
     }),
 
   // ── Graphe ──────────────────────────────────────────────────────────────

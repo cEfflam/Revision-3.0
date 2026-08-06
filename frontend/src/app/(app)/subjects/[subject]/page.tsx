@@ -23,16 +23,22 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn, pct, STATUS_STYLES } from "@/lib/utils";
-import type { SubjectDetail } from "@/types/api";
+import type { CurriculumNode, SubjectDetail } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { CurriculumTree } from "@/components/curriculum-tree";
+import { NodeSynthesisPanel } from "@/components/node-synthesis";
+
+type Tab = "overview" | "curriculum";
 
 export default function SubjectDetailPage() {
   const params = useParams<{ subject: string }>();
   const subject = params.subject;
   const [data, setData] = useState<SubjectDetail | null>(null);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [selectedNode, setSelectedNode] = useState<CurriculumNode | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -134,6 +140,60 @@ export default function SubjectDetailPage() {
         </CardContent>
       </Card>
 
+      {/* ── Onglets ─────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 rounded-tile bg-slate-100/70 p-1">
+        {(
+          [
+            ["overview", "Vue d'ensemble"],
+            ["curriculum", "Mon référentiel"],
+          ] as [Tab, string][]
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => setTab(value)}
+            className={cn(
+              "flex-1 rounded-xl px-3 py-2 text-sm font-bold transition",
+              tab === value
+                ? "bg-white text-indigo-700 shadow-soft"
+                : "text-slate-500 hover:text-slate-700",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══ Onglet référentiel : l'arbre éditable + la synthèse ═══════════ */}
+      {tab === "curriculum" && (
+        <>
+          <CurriculumTree
+            subject={subject}
+            selectedNodeId={selectedNode?.id ?? null}
+            onSelectNode={(node) =>
+              // Re-cliquer sur la notion ouverte la referme : l'écran reste
+              // lisible sur mobile, où le panneau prend toute la hauteur.
+              setSelectedNode((current) =>
+                current?.id === node.id ? null : node,
+              )
+            }
+          />
+          {selectedNode && (
+            <NodeSynthesisPanel
+              nodeId={selectedNode.id}
+              nodeTitle={selectedNode.title}
+            />
+          )}
+          {!selectedNode && (
+            <p className="px-1 text-center text-xs font-medium text-slate-400">
+              Clique une notion pour voir sa synthèse et la faire relire.
+            </p>
+          )}
+        </>
+      )}
+
+      {/* ══ Onglet vue d'ensemble ════════════════════════════════════════ */}
+      {tab === "overview" && (
+        <>
       {/* ── Points faibles : par où commencer ───────────────────────────── */}
       {data.weak_nodes.length > 0 && (
         <Card>
@@ -243,6 +303,8 @@ export default function SubjectDetailPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+        </>
       )}
     </div>
   );
