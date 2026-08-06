@@ -176,9 +176,17 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# En développement, tout localhost est accepté quel que soit le port. Next.js
+# bascule sur un port libre quand 3000 est pris, et une liste blanche figée est
+# alors systématiquement prise en défaut : le navigateur reçoit un « Failed to
+# fetch » que rien ne distingue d'un backend éteint.
+# En production, seules les origines déclarées passent.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=(
+        None if settings.is_production else r"http://(localhost|127\.0\.0\.1):\d+"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
