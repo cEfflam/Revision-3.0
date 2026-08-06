@@ -1,4 +1,4 @@
-"""Schémas du graphe de connaissances."""
+"""Schémas du graphe de connaissances et du référentiel."""
 
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ class NodeCreate(BaseModel):
     description: str = Field(default="", max_length=4000)
     difficulty: int = Field(default=3, ge=1, le=5)
     estimated_minutes: int = Field(default=20, ge=5, le=600)
+    # Rattachement hiérarchique : le thème sous lequel ranger cette notion.
+    parent_id: int | None = None
+    position: int = Field(default=0, ge=0)
     # Slugs des prérequis : les arêtes sont créées dans la même transaction.
     prerequisites: list[str] = Field(default_factory=list)
 
@@ -35,6 +38,8 @@ class NodeUpdate(BaseModel):
     estimated_minutes: int | None = Field(default=None, ge=5, le=600)
     # Permet de corriger un niveau à la main (ex. après l'onboarding).
     mastery: float | None = Field(default=None, ge=0.0, le=1.0)
+    parent_id: int | None = None
+    position: int | None = Field(default=None, ge=0)
 
 
 class NodeRead(BaseModel):
@@ -53,6 +58,24 @@ class NodeRead(BaseModel):
     review_count: int
     failure_count: int
     last_studied_at: datetime | None = None
+    parent_id: int | None = None
+    position: int = 0
+
+
+class CurriculumNode(NodeRead):
+    """Nœud du référentiel, avec ses enfants — pour l'affichage en arbre."""
+
+    children: list[CurriculumNode] = Field(default_factory=list)
+    documents_count: int = 0
+    cards_count: int = 0
+
+
+class CurriculumRead(BaseModel):
+    subject: str
+    label: str
+    themes: list[CurriculumNode] = Field(default_factory=list)
+    #: Notions non rangées sous un thème — à classer.
+    orphans: list[CurriculumNode] = Field(default_factory=list)
 
 
 class EdgeCreate(BaseModel):

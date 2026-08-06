@@ -30,6 +30,52 @@ from app.services.graph import engine as graph_engine
 router = APIRouter(prefix="/nodes", tags=["graphe"])
 
 
+async def _set_parent(
+    db, user, node: KnowledgeNode, parent_id: int | None
+) -> None:
+    """
+    Range une notion sous un thème, ou l'en sort si `parent_id` vaut None.
+
+    Refuse tout cycle : rattacher un thème sous l'un de ses propres
+    descendants détacherait toute la branche de l'arbre, sans erreur visible
+    — elle disparaîtrait simplement de l'affichage.
+    """
+    if parent_id is None:
+        node.parent_id = None
+        return
+
+    if parent_id == node.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Une notion ne peut pas être son propre thème.",
+        )
+
+    parent = await db.get(KnowledgeNode, parent_id)
+    if parent is None or parent.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Thème introuvable."
+        )
+
+    # Remonte la chaîne des parents : si on retombe sur `node`, c'est un cycle.
+    ancestor = parent
+    seen: set[int] = set()
+    while ancestor is not None and ancestor.parent_id is not None:
+        if ancestor.parent_id == node.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"« {parent.title} » est déjà rangé sous « {node.title} ». "
+                    "Ce déplacement détacherait la branche de l'arbre."
+                ),
+            )
+        if ancestor.id in seen:
+            break
+        seen.add(ancestor.id)
+        ancestor = await db.get(KnowledgeNode, ancestor.parent_id)
+
+    node.parent_id = parent_id
+
+
 async def _get_owned_node(db, user, node_id: int) -> KnowledgeNode:
     node = await db.get(KnowledgeNode, node_id)
     # Le contrôle de propriété est fait ici, systématiquement : sans lui, un
@@ -200,9 +246,13 @@ async def create_node(
         description=payload.description.strip(),
         difficulty=payload.difficulty,
         estimated_minutes=payload.estimated_minutes,
+        position=payload.position,
     )
     db.add(node)
     await db.flush()
+
+    if payload.parent_id is not None:
+        await _set_parent(db, user, node, payload.parent_id)
 
     # Les prérequis sont fournis par slug : plus pratique à écrire à la main et
     # stable si les identifiants changent.
@@ -256,6 +306,12 @@ async def update_node(
     node = await _get_owned_node(db, user, node_id)
 
     data = payload.model_dump(exclude_unset=True)
+
+    # `parent_id` est le seul champ dont `None` est une valeur signifiante :
+    # elle sort la notion de son thème pour la remettre « à classer ».
+    if "parent_id" in data:
+        await _set_parent(db, user, node, data.pop("parent_id"))
+
     for field_name, value in data.items():
         if value is None:
             continue

@@ -18,12 +18,12 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import Select, func, select
 
 from app.core.deps import CurrentUser, DbSession
-from app.models.content import Document
-from app.models.enums import SUBJECT_LABELS, NodeStatus, Subject
+from app.models.content import Document, document_nodes
+from app.models.enums import SUBJECT_LABELS, NodeKind, NodeStatus, Subject
 from app.models.graph import KnowledgeNode
 from app.models.learning import Card
 from app.schemas.content import DocumentRead
-from app.schemas.graph import NodeRead
+from app.schemas.graph import CurriculumNode, CurriculumRead, NodeRead
 from app.schemas.subject import SubjectDetail, SubjectSummary
 from app.services.graph.engine import MASTERED_THRESHOLD
 
@@ -124,6 +124,84 @@ async def list_subjects(user: CurrentUser, db: DbSession) -> list[SubjectSummary
     ]
     summaries.sort(key=lambda s: s.mastery)
     return summaries
+
+
+@router.get(
+    "/{subject}/curriculum",
+    response_model=CurriculumRead,
+    summary="Mon référentiel pour cette matière",
+)
+async def read_curriculum(
+    subject: Subject, user: CurrentUser, db: DbSession
+) -> CurriculumRead:
+    """
+    L'arbre du référentiel : Thème > Notion, tel que TU l'as écrit.
+
+    Rien n'est généré ici. C'est la différence de fond avec une extraction
+    automatique depuis des PDF : le programme du BTS est fixe et connu, donc
+    l'écrire une fois vaut mieux que le deviner à chaque import — deviner
+    produit des doublons et une granularité incohérente.
+    """
+    nodes = (
+        await db.execute(
+            select(KnowledgeNode)
+            .where(
+                KnowledgeNode.user_id == user.id,
+                KnowledgeNode.subject == subject.value,
+            )
+            .order_by(KnowledgeNode.position, KnowledgeNode.title)
+        )
+    ).scalars().all()
+
+    documents_per_node = _rows_to_map(
+        (
+            await db.execute(
+                select(document_nodes.c.node_id, func.count())
+                .group_by(document_nodes.c.node_id)
+            )
+        ).all()
+    )
+    cards_per_node = _rows_to_map(
+        (
+            await db.execute(
+                select(Card.node_id, func.count(Card.id))
+                .where(Card.user_id == user.id, Card.node_id.is_not(None))
+                .group_by(Card.node_id)
+            )
+        ).all()
+    )
+
+    def to_tree(node: KnowledgeNode) -> CurriculumNode:
+        # On passe par NodeRead — qui n'a pas de champ `children` — puis on
+        # greffe les enfants déjà chargés. Valider directement l'objet ORM
+        # ferait tenter à Pydantic un chargement paresseux de la relation,
+        # impossible hors du contexte asynchrone (MissingGreenlet).
+        return CurriculumNode(
+            **NodeRead.model_validate(node).model_dump(),
+            documents_count=documents_per_node.get(str(node.id), 0),
+            cards_count=cards_per_node.get(str(node.id), 0),
+            children=[
+                to_tree(child) for child in children_by_parent.get(node.id, [])
+            ],
+        )
+
+    children_by_parent: dict[int, list[KnowledgeNode]] = {}
+    for node in nodes:
+        if node.parent_id is not None:
+            children_by_parent.setdefault(node.parent_id, []).append(node)
+
+    roots = [n for n in nodes if n.parent_id is None]
+    themes = [to_tree(n) for n in roots if n.kind != NodeKind.concept.value]
+    # Une notion sans thème parent n'est pas perdue : elle remonte dans
+    # « à classer » pour que le trou soit visible plutôt que silencieux.
+    orphans = [to_tree(n) for n in roots if n.kind == NodeKind.concept.value]
+
+    return CurriculumRead(
+        subject=subject.value,
+        label=SUBJECT_LABELS.get(subject.value, subject.value),
+        themes=themes,
+        orphans=orphans,
+    )
 
 
 @router.get(

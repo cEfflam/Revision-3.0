@@ -46,6 +46,7 @@ class KnowledgeNode(Base, TimestampMixin):
         # utilisateur : `sql-inner-join`, `symfony-doctrine-orm`…
         UniqueConstraint("user_id", "slug", name="uq_node_slug"),
         Index("ix_node_user_status", "user_id", "status"),
+        Index("ix_node_user_parent", "user_id", "parent_id"),
         CheckConstraint("mastery >= 0 AND mastery <= 1", name="mastery_range"),
     )
 
@@ -59,6 +60,23 @@ class KnowledgeNode(Base, TimestampMixin):
     kind: Mapped[str] = mapped_column(String(16), default=NodeKind.concept.value)
     subject: Mapped[str] = mapped_column(String(32), default=Subject.other.value)
     description: Mapped[str] = mapped_column(Text, default="")
+
+    # ── Hiérarchie de CONTENANCE : Matière > Thème > Notion ──────────────
+    # Volontairement distincte des arêtes de prérequis. Les deux répondent à
+    # des questions différentes et se croisent :
+    #   parent_id  → « où cette notion se range-t-elle dans mon référentiel ? »
+    #   NodeEdge   → « que faut-il maîtriser avant de l'aborder ? »
+    # Doctrine ORM est rangé sous « Symfony » mais a pour prérequis une notion
+    # de SQL, dans une tout autre branche. Confondre les deux relations rendrait
+    # l'un des deux usages impossible.
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_nodes.id", ondelete="CASCADE"), nullable=True
+    )
+    # Rang d'affichage dans la fratrie : le référentiel a un ordre pédagogique
+    # qui n'est ni alphabétique ni chronologique.
+    position: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
 
     # ── État d'acquisition ───────────────────────────────────────────────
     # mastery ∈ [0,1] : moyenne pondérée des performances récentes.
@@ -88,6 +106,17 @@ class KnowledgeNode(Base, TimestampMixin):
     user: Mapped[User] = relationship(back_populates="nodes")
     cards: Mapped[list[Card]] = relationship(
         back_populates="node", cascade="all, delete-orphan"
+    )
+    children: Mapped[list[KnowledgeNode]] = relationship(
+        back_populates="parent",
+        cascade="all, delete-orphan",
+        order_by="KnowledgeNode.position",
+        # `remote_side` désigne le côté « un » de la relation réflexive :
+        # sans lui, SQLAlchemy ne sait pas dans quel sens lire parent_id.
+        single_parent=True,
+    )
+    parent: Mapped[KnowledgeNode | None] = relationship(
+        back_populates="children", remote_side=[id]
     )
 
     # Arêtes sortantes : « ce nœud débloque… »
