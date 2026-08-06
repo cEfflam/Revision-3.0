@@ -46,6 +46,10 @@ class ExamRead(BaseModel):
     duration_minutes: int = 45
     total_points: float = 20
     inspired_by: str = ""
+    # Notions que ce sujet met à l'épreuve. Renvoyées au client puis reprises
+    # à la correction : c'est ce qui permet à une mauvaise note de faire
+    # baisser la maîtrise des bonnes notions, et de les remettre en révision.
+    target_node_ids: list[int] = Field(default_factory=list)
     # False quand aucune annale n'a été trouvée : le sujet est alors construit
     # sur la méthode officielle seule, et l'interface le signale.
     has_annales: bool = False
@@ -76,9 +80,22 @@ class CriterionFeedback(BaseModel):
     comment: str = ""
 
 
+class MasteryImpact(BaseModel):
+    """Effet de la copie sur une notion du graphe."""
+
+    node_id: int
+    node_title: str
+    delta: float
+    mastery_after: float
+
+
 class ExamEvaluationRead(BaseModel):
     score: float = 0
     max_score: float = 20
+    # Ce que cette copie a changé dans le graphe. Rendre l'effet visible évite
+    # l'impression que la note « ne sert à rien ».
+    mastery_impact: list[MasteryImpact] = Field(default_factory=list)
+    cards_resurfaced: int = 0
     per_question: list[QuestionFeedback] = Field(default_factory=list)
     criteria_feedback: list[CriterionFeedback] = Field(default_factory=list)
     strengths: list[str] = Field(default_factory=list)

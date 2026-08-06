@@ -33,6 +33,7 @@ from app.schemas.practice import (
     ExamGenerateRequest,
     ExamQuestion,
     ExamRead,
+    MasteryImpact,
     QuestionFeedback,
 )
 from app.services.ai import service as ai_service
@@ -84,6 +85,7 @@ async def generate_exam(
     subject = payload.subject.value
 
     node_titles: list[str] = []
+    target_ids: list[int] = []
     if payload.node_id:
         node = await db.get(KnowledgeNode, payload.node_id)
         if node is None or node.user_id != user.id:
@@ -91,11 +93,15 @@ async def generate_exam(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Notion introuvable."
             )
         node_titles = [node.title]
-    elif not payload.topic:
-        # Sans thème imposé, on vise les notions les plus fragiles de la
-        # matière : s'entraîner sur ce qu'on maîtrise déjà ne rapporte rien.
+        target_ids = [node.id]
+    else:
+        # Sans notion imposée, on vise les plus fragiles de la matière :
+        # s'entraîner sur ce qu'on maîtrise déjà ne rapporte rien.
         weak = await graph_engine.recommended_nodes(db, user.id, limit=12)
-        node_titles = [n.title for n in weak if n.subject == subject][:4]
+        targets = [n for n in weak if n.subject == subject][:4]
+        target_ids = [n.id for n in targets]
+        if not payload.topic:
+            node_titles = [n.title for n in targets]
 
     result = await ai_service.generate_exam(
         user, subject=subject, topic=payload.topic, node_titles=node_titles
@@ -130,6 +136,7 @@ async def generate_exam(
         duration_minutes=int(result.get("duration_minutes", fmt.duration_minutes)),
         total_points=float(result.get("total_points", fmt.total_points)),
         inspired_by=str(result.get("inspired_by", "")),
+        target_node_ids=target_ids,
         has_annales=bool(result.get("_has_annales")),
         sources=[SourceRead.model_validate(s) for s in result.get("_sources", [])],
         model=str(result.get("_model", "")),
@@ -160,6 +167,48 @@ async def evaluate_exam(
     max_score = float(result.get("max_score", fmt.total_points) or fmt.total_points)
     score = max(0.0, min(float(result.get("score", 0) or 0), max_score))
 
+    # ── La boucle de rétroaction ─────────────────────────────────────────
+    # Sans elle, rater un BTS blanc n'aurait aucune conséquence : la maîtrise
+    # resterait au niveau que les flashcards ont établi, et l'application
+    # continuerait à faire réviser autre chose. Or c'est exactement ce cas —
+    # bien répondre aux cartes mais rater l'épreuve — qui doit alerter : la
+    # notion est reconnue, pas mobilisable.
+    ratio = score / max_score if max_score else 0.0
+    impacts: list[MasteryImpact] = []
+    resurfaced = 0
+
+    target_ids = [
+        int(n) for n in (payload.exercise.get("target_node_ids") or []) if n
+    ]
+    if target_ids:
+        nodes = (
+            await db.execute(
+                select(KnowledgeNode).where(
+                    KnowledgeNode.id.in_(target_ids),
+                    KnowledgeNode.user_id == user.id,
+                )
+            )
+        ).scalars().all()
+
+        for node in nodes:
+            delta = graph_engine.apply_exam_result(node, ratio)
+            impacts.append(
+                MasteryImpact(
+                    node_id=node.id,
+                    node_title=node.title,
+                    delta=delta,
+                    mastery_after=node.mastery,
+                )
+            )
+
+        # En dessous de la moyenne, les cartes concernées redescendent dans la
+        # file. Plus la note est basse, plus le rappel est agressif.
+        if ratio < 0.5 and nodes:
+            resurfaced = await srs_service.resurface_node_cards(
+                db, user.id, [n.id for n in nodes], severity=1.0 - ratio * 2
+            )
+        await graph_engine.recompute_locks(db, user.id)
+
     # Une copie rendue est une vraie séance de travail : on la trace, sinon
     # elle n'apparaîtrait ni dans la heatmap ni dans le streak.
     session = StudySession(
@@ -178,6 +227,8 @@ async def evaluate_exam(
     return ExamEvaluationRead(
         score=score,
         max_score=max_score,
+        mastery_impact=impacts,
+        cards_resurfaced=resurfaced,
         per_question=[
             QuestionFeedback(
                 number=int(q.get("number", i + 1)),

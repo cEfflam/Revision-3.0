@@ -116,6 +116,33 @@ def apply_review_to_node(node: KnowledgeNode, rating: Rating) -> None:
     node.status = derive_status(node).value
 
 
+# Une copie d'examen pèse trois fois plus qu'une flashcard dans la maîtrise.
+# C'est délibéré : réussir une carte prouve qu'on reconnaît une réponse, réussir
+# une épreuve prouve qu'on sait mobiliser la notion sous contrainte de temps et
+# de rédaction. Les deux signaux ne valent pas la même chose.
+EXAM_ALPHA = MASTERY_ALPHA * 3
+
+
+def apply_exam_result(node: KnowledgeNode, ratio: float) -> float:
+    """
+    Répercute une note d'examen sur la maîtrise d'une notion.
+
+    Renvoie la variation de maîtrise — négative quand l'épreuve a révélé une
+    faiblesse que les révisions ne montraient pas. C'est précisément le cas
+    qui compte : bien réussir ses cartes et rater le sujet type BTS signifie
+    que la notion est reconnue mais pas mobilisable.
+    """
+    before = node.mastery
+    ratio = max(0.0, min(1.0, ratio))
+    node.mastery = round(node.mastery * (1 - EXAM_ALPHA) + ratio * EXAM_ALPHA, 4)
+    node.review_count += 1
+    if ratio < 0.5:
+        node.failure_count += 1
+    node.last_studied_at = datetime.now(UTC)
+    node.status = derive_status(node).value
+    return round(node.mastery - before, 4)
+
+
 def derive_status(node: KnowledgeNode) -> NodeStatus:
     """
     Statut affiché dans le Skill Tree. Ne gère pas `locked` : ça dépend des

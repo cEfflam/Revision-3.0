@@ -232,6 +232,49 @@ def _bump_streak(user: User, today: date) -> None:
     user.last_active_day = today
 
 
+async def resurface_node_cards(
+    db: AsyncSession, user_id: int, node_ids: list[int], *, severity: float
+) -> int:
+    """
+    Ramène les cartes d'une notion dans la file après un échec en conditions
+    d'examen.
+
+    Sans ça, le paradoxe suivant se produit : tu rates la notion au BTS blanc,
+    mais comme tes cartes ont été bien répondues la semaine dernière, elles ne
+    reviendront pas avant trois semaines. L'application saurait que tu es
+    faible et continuerait à te faire réviser autre chose.
+
+    `severity` (0 → 1) module l'agressivité : une note de 4/20 ramène tout
+    immédiatement, une note de 11/20 ne ramène que les cartes aux intervalles
+    les plus longs — celles qu'on risque le plus d'avoir oubliées.
+    """
+    if not node_ids or severity <= 0:
+        return 0
+
+    now = datetime.now(UTC)
+    # Au-delà de ce seuil, la carte est jugée « trop loin » et redescend.
+    # Note catastrophique → seuil à 0 jour, donc toutes les cartes reviennent.
+    threshold_days = round(30 * (1 - severity), 2)
+
+    result = await db.execute(
+        select(Card).where(
+            Card.user_id == user_id,
+            Card.node_id.in_(node_ids),
+            Card.is_suspended.is_(False),
+            Card.due_at > now,
+            Card.interval_days >= threshold_days,
+        )
+    )
+    cards = list(result.scalars().all())
+
+    for card in cards:
+        card.due_at = now
+        # L'intervalle est réduit sans être remis à zéro : la trace existe,
+        # elle est seulement moins solide qu'on ne le croyait.
+        card.interval_days = max(1.0, card.interval_days * (1 - severity * 0.6))
+    return len(cards)
+
+
 async def heatmap(
     db: AsyncSession, user_id: int, *, days: int = 365
 ) -> list[dict[str, int | str]]:
