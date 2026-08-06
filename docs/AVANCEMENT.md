@@ -2,15 +2,27 @@
 
 > Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-06**.
 
-**Global : ~82 %** du cahier des charges.
+**Global : ~88 %** du cahier des charges. **IA branchée en réel** (Qwen + DeepSeek).
 
 | Phase | État | Détail |
 | --- | --- | --- |
 | 1 · Fondations | ✅ **100 %** | Docker, auth, modèles, migrations, UI |
 | 2 · RAG & import | ✅ **100 %** | PDF/DOCX/MD, Qdrant, embeddings locaux, AI Router |
 | 3 · Graphe & SRS | 🟡 **75 %** | SM-2 ✅, graphe + diagnostic ✅ · manque React Flow, FSRS |
-| 4 · Moteurs & Roadmap IA | ✅ **90 %** | Roadmap IA, Focus, quiz, CGE ✅ · manque sandbox SQL |
+| 4 · Moteurs & Roadmap IA | ✅ **95 %** | + entraînement type BTS · manque sandbox SQL |
 | 5 · Polish & déploiement | ❌ **5 %** | Manifest PWA seul · manque CI/CD, VPS, backups |
+
+## 🧠 Les méthodes d'apprentissage, et où elles vivent
+
+| Méthode | Implémentée | Où exactement |
+| --- | :---: | --- |
+| **Active Recall** (effet de test) | ✅ | `/review` : la question s'affiche seule, la réponse n'apparaît qu'après l'effort. Quiz et entraînement BTS reposent sur le même principe. |
+| **Répétition espacée** | ✅ | `services/srs/sm2.py` — SM-2 complet, 4 états, intervalles calculés sur la courbe d'Ebbinghaus. 7 tests. |
+| **Interleaving** | ✅ | `srs/service.py::_interleave_by_subject` — round-robin sur les matières dans la file. Désactivé sur une session ciblée (une seule matière). |
+| **Feynman / auto-explication** | 🟡 | Présent dans les prompts (reformuler avec ses mots, question de vérification finale) et via `hint` + `explanation` sur les cartes. **Pas encore d'écran dédié** où l'on explique à voix haute et se fait corriger. |
+| **Retrieval practice** | ✅ | Toute la file SRS + le quiz + les sujets d'examen. |
+| **Difficulté adaptative** | ✅ | `ease_factor` par carte, `mastery` par nœud, verrouillage des prérequis. |
+| **Analyse des erreurs** | 🟡 | Diagnostic des prérequis ✅, prompt `error_analysis` ✅ · pas d'écran dédié. |
 
 ---
 
@@ -35,6 +47,8 @@
 | **Quiz dynamique** | Généré depuis un cours, score et explications |
 | **Roadmap IA** | Parcours ordonné persisté, étapes cochables |
 | **Gestion des cartes** | Correction, suspension (sort de la file), suppression |
+| **Entraînement type BTS** | Sujet CEJM généré dans le style d'une vraie annale, corrigé 0/20 puis 2/20 avec justification par question |
+| **IA réelle** | Qwen 0,000036 $/appel · DeepSeek 0,000127 $ (332 jetons de réflexion) |
 | Tests backend | 17/17 (SM-2, découpage, référentiel) |
 
 ---
