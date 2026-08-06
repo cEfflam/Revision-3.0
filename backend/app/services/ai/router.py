@@ -62,6 +62,10 @@ class AiTask(StrEnum):
     cejm_case = "cejm_case"
     english_chat = "english_chat"
 
+    # ── Entraînement type examen ─────────────────────────────────────────
+    exam_generate = "exam_generate"
+    exam_evaluate = "exam_evaluate"
+
     # ── Coaching ─────────────────────────────────────────────────────────
     journal = "journal"
     roadmap = "roadmap"
@@ -89,7 +93,34 @@ TASK_ROLE: dict[AiTask, ModelRole] = {
     AiTask.sql_review: ModelRole.reasoning,
     AiTask.roadmap: ModelRole.reasoning,         # ordonnancement de prérequis
     AiTask.error_analysis: ModelRole.reasoning,  # recherche de motifs
+    # Les épreuves basculent selon la matière (voir role_for_subject) : par
+    # défaut on prend le rôle prudent, car un sujet incohérent ou une note
+    # fausse se voient immédiatement.
+    AiTask.exam_generate: ModelRole.reasoning,
+    AiTask.exam_evaluate: ModelRole.reasoning,
 }
+
+# Quel modèle pour quelle MATIÈRE, quand la tâche seule ne suffit pas à
+# trancher. Concevoir un cas pratique de CEJM est un exercice de rédaction
+# juridique ; concevoir un exercice de SQL demande de la logique. Même tâche,
+# deux besoins opposés.
+SUBJECT_ROLE: dict[str, ModelRole] = {
+    "cejm": ModelRole.language,
+    "cge": ModelRole.language,
+    "english": ModelRole.language,
+    "sql": ModelRole.reasoning,
+    "dev": ModelRole.reasoning,
+    "math": ModelRole.reasoning,
+    "network": ModelRole.reasoning,
+    "security": ModelRole.reasoning,
+    "cloud": ModelRole.reasoning,
+    "devops": ModelRole.reasoning,
+}
+
+
+def role_for_subject(subject: str | None) -> ModelRole | None:
+    """Rôle imposé par la matière, ou None pour laisser décider la tâche."""
+    return SUBJECT_ROLE.get(subject or "")
 
 # Températures : basse quand on veut de la rigueur, plus haute quand on veut
 # de la variété (ne jamais générer deux fois le même exercice).
@@ -109,6 +140,12 @@ TASK_TEMPERATURE: dict[AiTask, float] = {
     AiTask.journal: 0.6,
     AiTask.roadmap: 0.3,
     AiTask.error_analysis: 0.2,
+    # Assez haute pour que deux entraînements ne donnent jamais le même sujet,
+    # mais pas davantage : au-delà de 0.6, le modèle devient créatif sur la
+    # STRUCTURE aussi et omet régulièrement la clé « questions ».
+    AiTask.exam_generate: 0.6,
+    # Basse : une note doit être reproductible, pas créative.
+    AiTask.exam_evaluate: 0.1,
 }
 
 # Tâches dont la réponse doit être du JSON strict (parsée par le backend).
@@ -120,6 +157,8 @@ JSON_TASKS: frozenset[AiTask] = frozenset(
         AiTask.node_suggestions,
         AiTask.cge_analysis,
         AiTask.roadmap,
+        AiTask.exam_generate,
+        AiTask.exam_evaluate,
     }
 )
 
@@ -149,11 +188,24 @@ MAX_TOKENS: dict[AiTask, int] = {
     AiTask.explain_code: 3500,
     AiTask.error_analysis: 3000,
     AiTask.roadmap: 4000,
+    # Un sujet d'examen complet (contexte + questions) est long par nature.
+    AiTask.exam_generate: 4000,
+    AiTask.exam_evaluate: 3500,
 }
 DEFAULT_MAX_TOKENS = 1500
 
 
-def role_for(task: AiTask) -> ModelRole:
+def role_for(task: AiTask, subject: str | None = None) -> ModelRole:
+    """
+    Le rôle vient de la matière si elle en impose un, sinon de la tâche.
+
+    L'ordre compte : « générer un sujet » n'a pas le même besoin en CEJM
+    (rédaction juridique → Qwen) qu'en SQL (logique → DeepSeek).
+    """
+    if subject:
+        override = role_for_subject(subject)
+        if override is not None:
+            return override
     return TASK_ROLE.get(task, ModelRole.language)
 
 
@@ -161,20 +213,37 @@ def temperature_for(task: AiTask) -> float:
     return TASK_TEMPERATURE.get(task, 0.5)
 
 
+# Clé que la réponse DOIT contenir, non vide, pour être exploitable.
+# Sans cette table, un modèle qui renvoie « title + context » sans la moindre
+# question produit un JSON parfaitement valide et totalement inutile — et
+# l'utilisateur voit une erreur sans comprendre pourquoi.
+REQUIRED_JSON_KEY: dict[AiTask, str] = {
+    AiTask.flashcards: "cards",
+    AiTask.quiz: "questions",
+    AiTask.node_suggestions: "nodes",
+    AiTask.roadmap: "steps",
+    AiTask.exam_generate: "questions",
+}
+
+
 def expects_json(task: AiTask) -> bool:
     return task in JSON_TASKS
+
+
+def required_json_key(task: AiTask) -> str | None:
+    return REQUIRED_JSON_KEY.get(task)
 
 
 def max_tokens_for(task: AiTask) -> int:
     return MAX_TOKENS.get(task, DEFAULT_MAX_TOKENS)
 
 
-def reasoning_enabled(task: AiTask) -> bool:
+def reasoning_enabled(task: AiTask, subject: str | None = None) -> bool:
     """
     Le raisonnement doit-il être activé ? Uniquement sur le rôle `reasoning`,
     et seulement si l'interrupteur global `AI_REASONING` est levé.
     """
-    return settings.AI_REASONING and role_for(task) is ModelRole.reasoning
+    return settings.AI_REASONING and role_for(task, subject) is ModelRole.reasoning
 
 
 def model_for(role: ModelRole) -> str:
@@ -185,7 +254,7 @@ def model_for(role: ModelRole) -> str:
     )
 
 
-def model_chain(task: AiTask) -> list[str]:
+def model_chain(task: AiTask, subject: str | None = None) -> list[str]:
     """
     Modèle principal, puis repli sur l'autre rôle.
 
@@ -194,11 +263,10 @@ def model_chain(task: AiTask) -> list[str]:
     peut-être moins fin en français, mais l'utilisateur obtient une réponse au
     lieu d'une erreur.
     """
-    primary = model_for(role_for(task))
+    role = role_for(task, subject)
+    primary = model_for(role)
     secondary = model_for(
-        ModelRole.language
-        if role_for(task) is ModelRole.reasoning
-        else ModelRole.reasoning
+        ModelRole.language if role is ModelRole.reasoning else ModelRole.reasoning
     )
     chain = [m for m in (primary, secondary) if m]
     # Dédoublonne en préservant l'ordre (cas où les deux rôles pointent sur
@@ -218,7 +286,10 @@ def price_per_million(role: ModelRole) -> tuple[float, float]:
 
 
 def estimate_cost(
-    task: AiTask, prompt_tokens: int, completion_tokens: int
+    task: AiTask,
+    prompt_tokens: int,
+    completion_tokens: int,
+    subject: str | None = None,
 ) -> float:
     """
     Coût en dollars d'un appel.
@@ -226,5 +297,5 @@ def estimate_cost(
     Les jetons de réflexion sont déjà comptés dans `completion_tokens` par
     OpenRouter : ils sont facturés au tarif de sortie, pas à un tarif à part.
     """
-    price_in, price_out = price_per_million(role_for(task))
+    price_in, price_out = price_per_million(role_for(task, subject))
     return (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000

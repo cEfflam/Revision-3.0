@@ -76,7 +76,10 @@ async def chat(
 
     return ChatResponse(
         answer=result.answer,
-        sources=[SourceRead(**vars(s)) for s in result.sources],
+        # `model_validate` et non `vars()` : les dataclasses déclarées avec
+        # slots=True n'ont pas de __dict__, et vars() lève une TypeError dès
+        # qu'une source remonte réellement.
+        sources=[SourceRead.model_validate(s) for s in result.sources],
         model=result.model,
         tier=role_for(payload.task).value,
         mocked=result.mocked,

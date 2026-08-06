@@ -39,6 +39,7 @@ from app.services.ai.router import (
     max_tokens_for,
     model_chain,
     reasoning_enabled,
+    required_json_key,
     role_for,
     temperature_for,
 )
@@ -110,11 +111,16 @@ class OpenRouterClient:
         messages: list[ChatMessage],
         *,
         task: AiTask,
+        subject: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> Completion:
-        chain = model_chain(task)
-        tier = role_for(task).value
+        # `subject` permet à la matière d'imposer le modèle : générer un cas
+        # pratique de CEJM est de la rédaction juridique (Qwen), générer un
+        # exercice de SQL est de la logique (DeepSeek). Même tâche, deux
+        # besoins opposés.
+        chain = model_chain(task, subject)
+        tier = role_for(task, subject).value
 
         if self.is_mocked:
             if not settings.AI_MOCK:
@@ -132,24 +138,56 @@ class OpenRouterClient:
             # Désactivé explicitement sur les tâches simples : c'est le premier
             # levier d'économie. Un modèle qui « réfléchit » facture ses jetons
             # de réflexion, même pour reformater un texte déjà fourni.
-            "reasoning": {"enabled": reasoning_enabled(task)},
+            "reasoning": {"enabled": reasoning_enabled(task, subject)},
         }
         if expects_json(task):
             # Tous les modèles n'honorent pas ce paramètre ; le parseur en aval
             # sait de toute façon récupérer du JSON entouré de texte.
             payload_base["response_format"] = {"type": "json_object"}
 
+        wants_json = expects_json(task)
+        required_key = required_json_key(task)
         attempts: list[str] = []
-        for model in chain:
+
+        # Chaque modèle a droit à deux essais sur une tâche JSON. Les modèles
+        # renvoient parfois une structure incomplète ou du texte autour : c'est
+        # non déterministe et observé en production. Un second essai coûte
+        # quelques centièmes de centime ; une erreur affichée à l'utilisateur
+        # coûte sa confiance.
+        for model, attempt in ((m, a) for m in chain for a in range(2 if wants_json else 1)):
             started = time.perf_counter()
             try:
-                response = await self._http().post(
-                    "/chat/completions", json={**payload_base, "model": model}
-                )
+                payload = {**payload_base, "model": model}
+                if attempt:
+                    payload["messages"] = [
+                        *payload_base["messages"],
+                        {
+                            "role": "system",
+                            "content": (
+                                "Ta réponse précédente n'était pas un JSON valide "
+                                "et complet. Renvoie UNIQUEMENT l'objet JSON "
+                                "demandé, tous champs remplis, sans aucun texte "
+                                "avant ni après."
+                            ),
+                        },
+                    ]
+                response = await self._http().post("/chat/completions", json=payload)
                 response.raise_for_status()
                 data = response.json()
 
                 choice = data["choices"][0]["message"]["content"] or ""
+
+                if wants_json and not _is_usable_json(choice, required_key):
+                    attempts.append(f"{model}#{attempt + 1}: JSON incomplet")
+                    logger.warning(
+                        "Réponse JSON inexploitable de %s (essai %s, clé « %s » "
+                        "absente ou vide) — nouvel essai.",
+                        model,
+                        attempt + 1,
+                        required_key,
+                    )
+                    continue
+
                 usage = data.get("usage") or {}
                 details = usage.get("completion_tokens_details") or {}
                 prompt_details = usage.get("prompt_tokens_details") or {}
@@ -165,11 +203,17 @@ class OpenRouterClient:
                     cached_tokens=int(prompt_details.get("cached_tokens", 0) or 0),
                     attempts=attempts,
                 )
-                _log_usage(task, completion)
+                _log_usage(task, completion, subject)
                 return completion
             except Exception as exc:
                 attempts.append(f"{model}: {type(exc).__name__}")
                 logger.warning("Modèle %s indisponible (%s) — repli.", model, exc)
+
+        if wants_json:
+            raise AiUnavailable(
+                "Aucun modèle n'a produit un JSON exploitable. Tentatives : "
+                + " | ".join(attempts)
+            )
 
         raise AiUnavailable(
             "Aucun modèle n'a répondu. Tentatives : " + " | ".join(attempts)
@@ -185,7 +229,9 @@ def get_ai_client() -> OpenRouterClient:
     return OpenRouterClient()
 
 
-def _log_usage(task: AiTask, completion: Completion) -> None:
+def _log_usage(
+    task: AiTask, completion: Completion, subject: str | None = None
+) -> None:
     """
     Trace la consommation de chaque appel.
 
@@ -194,7 +240,7 @@ def _log_usage(task: AiTask, completion: Completion) -> None:
     Repérable dans les logs : `docker compose logs backend | grep "coût"`.
     """
     cost = estimate_cost(
-        task, completion.prompt_tokens, completion.completion_tokens
+        task, completion.prompt_tokens, completion.completion_tokens, subject
     )
     logger.info(
         "coût | %-18s | %-30s | entrée %5d (%4d en cache) | sortie %5d "
@@ -214,6 +260,26 @@ def _log_usage(task: AiTask, completion: Completion) -> None:
 #  Extraction du JSON
 # ═════════════════════════════════════════════════════════════════════════
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", flags=re.DOTALL)
+
+def _is_usable_json(text: str, required_key: str | None) -> bool:
+    """
+    Le JSON est-il parsable ET porteur du contenu attendu ?
+
+    Vérifier la seule syntaxe ne suffit pas : un objet qui contient le titre et
+    l'énoncé mais pas la clé `questions` est parfaitement valide et totalement
+    inutilisable. La clé exigée est déclarée par tâche dans le routeur.
+    """
+    try:
+        payload = parse_json_response(text)
+    except ValueError:
+        return False
+    if isinstance(payload, list):
+        return bool(payload)
+    if not isinstance(payload, dict):
+        return False
+    if required_key is None:
+        return True
+    return bool(payload.get(required_key))
 
 
 def parse_json_response(text: str) -> Any:
