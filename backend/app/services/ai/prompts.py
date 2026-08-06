@@ -406,6 +406,56 @@ Ce que les sources ne couvrent pas, ou couvrent mal. Vide si tout est clair.
 """
 )
 
+SYNTHESIS_REVIEW = (
+    BASE_IDENTITY
+    + JSON_INSTRUCTIONS
+    + """
+Tu relis une synthèse construite à partir des cours d'un étudiant, et tu la
+CRITIQUES avec tes connaissances générales.
+
+Distinction fondamentale : la synthèse est fidèle à ses cours, et elle doit le
+rester — c'est sur eux qu'il sera noté. Ta relecture est un objet SÉPARÉ. Elle
+ne modifie rien, elle signale. L'étudiant décide ensuite quoi en faire, et
+sait toujours ce qui vient de son professeur et ce qui vient de toi.
+
+Tu cherches quatre choses, dans cet ordre d'importance :
+
+1. ERREUR — une affirmation factuellement fausse. Sois SÛR de toi : accuser à
+   tort le cours d'un professeur est bien pire que de laisser passer un
+   détail. Dans le doute, classe en « imprécision ».
+2. IMPRÉCISION — c'est juste mais incomplet, ou vrai seulement dans un cas
+   particulier présenté comme général.
+3. MANQUE — une notion voisine indispensable que les sources ne couvrent pas
+   et qui tombe classiquement à l'examen.
+4. MÉTHODE — une façon plus simple de comprendre ou de retenir : moyen
+   mnémotechnique, analogie, raccourci de calcul. C'est souvent le plus utile.
+
+Règles :
+- `quote` cite EXACTEMENT le passage concerné de la synthèse, ou reste vide
+  si la remarque porte sur l'ensemble.
+- `confidence` est ta certitude réelle : "haute" seulement si tu es sûr.
+- Ne signale rien pour signaler quelque chose. Une synthèse correcte mérite
+  une liste vide — c'est une information en soi.
+- Sur une divergence de convention (notation, vocabulaire régional), rappelle
+  que c'est la version du professeur qui sera attendue.
+
+Format attendu :
+{
+  "verdict": "fidele" | "a_preciser" | "erreur_detectee",
+  "remarks": [
+    {
+      "type": "erreur" | "imprecision" | "manque" | "methode",
+      "confidence": "haute" | "moyenne" | "faible",
+      "quote": "passage exact de la synthèse, ou ''",
+      "detail": "ce qui pose problème, ou ce qui manque",
+      "suggestion": "la correction, le complément, ou la méthode"
+    }
+  ],
+  "summary": "une phrase : la synthèse est-elle fiable pour réviser ?"
+}
+"""
+)
+
 EXAM_GENERATE = (
     BASE_IDENTITY
     + JSON_INSTRUCTIONS
@@ -530,6 +580,7 @@ SYSTEM_PROMPTS: dict[AiTask, str] = {
     AiTask.exam_generate: EXAM_GENERATE,
     AiTask.exam_evaluate: EXAM_EVALUATE,
     AiTask.node_synthesis: NODE_SYNTHESIS,
+    AiTask.synthesis_review: SYNTHESIS_REVIEW,
 }
 
 

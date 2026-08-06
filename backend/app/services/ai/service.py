@@ -493,6 +493,47 @@ async def build_node_synthesis(
     return completion.text.strip(), len(documents)
 
 
+async def review_synthesis(node) -> dict:
+    """
+    Relit une synthèse avec les connaissances générales du modèle.
+
+    Volontairement SÉPARÉ de la génération. La synthèse reste fidèle aux cours
+    — c'est sur eux que l'étudiant sera noté — et la relecture est un second
+    objet, consultable à part. L'étudiant sait ainsi toujours ce qui vient de
+    son professeur et ce qui vient de l'IA.
+
+    Mélanger les deux serait la pire option : impossible ensuite de distinguer
+    ce qui sera attendu en épreuve de ce qui n'est que culture générale.
+    """
+    if not node.synthesis:
+        return {}
+
+    prompt = (
+        f"NOTION : {node.title}\n"
+        f"MATIÈRE : {node.subject}\n\n"
+        f"### SYNTHÈSE À RELIRE\n{node.synthesis}"
+    )
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.synthesis_review)),
+        ChatMessage(role="user", content=prompt),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.synthesis_review, subject=node.subject
+    )
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Relecture non parsable : %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    return payload
+
+
 async def generate_exam(
     user: User,
     *,

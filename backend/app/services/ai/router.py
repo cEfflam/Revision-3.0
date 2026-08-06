@@ -53,6 +53,7 @@ class AiTask(StrEnum):
     mindmap = "mindmap"
     node_suggestions = "node_suggestions"
     node_synthesis = "node_synthesis"
+    synthesis_review = "synthesis_review"
 
     # ── Moteurs par matière ──────────────────────────────────────────────
     chat = "chat"
@@ -87,6 +88,9 @@ TASK_ROLE: dict[AiTask, ModelRole] = {
     # droit est de la rédaction, synthétiser un cours de maths demande de ne
     # pas déformer une formule.
     AiTask.node_synthesis: ModelRole.language,
+    # Relecture critique : c'est un travail de vérification, pas de rédaction.
+    # Affirmer qu'un cours de professeur est faux demande du raisonnement.
+    AiTask.synthesis_review: ModelRole.reasoning,
     AiTask.chat: ModelRole.language,
     AiTask.english_chat: ModelRole.language,
     AiTask.journal: ModelRole.language,
@@ -137,6 +141,7 @@ TASK_TEMPERATURE: dict[AiTask, float] = {
     AiTask.node_suggestions: 0.2,
     # Très basse : une synthèse doit restituer, pas inventer.
     AiTask.node_synthesis: 0.15,
+    AiTask.synthesis_review: 0.2,
     AiTask.chat: 0.5,
     AiTask.explain_code: 0.3,
     AiTask.sql_review: 0.2,
@@ -166,6 +171,7 @@ JSON_TASKS: frozenset[AiTask] = frozenset(
         AiTask.roadmap,
         AiTask.exam_generate,
         AiTask.exam_evaluate,
+        AiTask.synthesis_review,
     }
 )
 
@@ -188,6 +194,7 @@ MAX_TOKENS: dict[AiTask, int] = {
     # Le texte le plus long produit par l'application, et le plus rentable :
     # généré une fois, relu à chaque question sur la notion.
     AiTask.node_synthesis: 2500,
+    AiTask.synthesis_review: 2000,
     AiTask.flashcards: 2000,
     AiTask.quiz: 2000,
     AiTask.cejm_case: 2000,
@@ -233,6 +240,8 @@ REQUIRED_JSON_KEY: dict[AiTask, str] = {
     AiTask.node_suggestions: "nodes",
     AiTask.roadmap: "steps",
     AiTask.exam_generate: "questions",
+    # Pas de clé exigée pour la relecture : une liste de remarques vide est un
+    # résultat valide et même souhaitable — la synthèse est alors fiable.
 }
 
 

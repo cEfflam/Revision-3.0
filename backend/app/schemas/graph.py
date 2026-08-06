@@ -76,6 +76,35 @@ class NodeSynthesisRead(BaseModel):
     linked_documents: int = 0
 
 
+class SynthesisRemark(BaseModel):
+    """Une remarque de la relecture IA sur la synthèse."""
+
+    type: str = "methode"
+    confidence: str = "moyenne"
+    quote: str = ""
+    detail: str = ""
+    suggestion: str = ""
+
+
+class SynthesisReviewRead(BaseModel):
+    """
+    Relecture critique, stockée SÉPARÉMENT de la synthèse.
+
+    La synthèse reste fidèle aux cours ; la relecture ajoute le regard de l'IA
+    sans jamais s'y mêler. L'étudiant sait toujours ce qui vient de son
+    professeur — donc ce sur quoi il sera noté — et ce qui vient du modèle.
+    """
+
+    node_id: int
+    node_title: str
+    verdict: str = "fidele"
+    remarks: list[SynthesisRemark] = Field(default_factory=list)
+    summary: str = ""
+    reviewed_at: datetime | None = None
+    model: str = ""
+    mocked: bool = False
+
+
 class CurriculumNode(NodeRead):
     """Nœud du référentiel, avec ses enfants — pour l'affichage en arbre."""
 

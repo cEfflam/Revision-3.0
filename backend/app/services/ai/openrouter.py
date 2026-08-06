@@ -181,10 +181,11 @@ class OpenRouterClient:
                     attempts.append(f"{model}#{attempt + 1}: JSON incomplet")
                     logger.warning(
                         "Réponse JSON inexploitable de %s (essai %s, clé « %s » "
-                        "absente ou vide) — nouvel essai.",
+                        "absente ou vide) — nouvel essai. Reçu : %r",
                         model,
                         attempt + 1,
                         required_key,
+                        choice[:300],
                     )
                     continue
 

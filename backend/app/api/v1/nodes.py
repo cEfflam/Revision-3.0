@@ -28,6 +28,8 @@ from app.schemas.graph import (
     NodeRead,
     NodeSynthesisRead,
     NodeUpdate,
+    SynthesisRemark,
+    SynthesisReviewRead,
 )
 from app.services.ai import service as ai_service
 from app.services.ai.openrouter import AiUnavailable
@@ -259,6 +261,13 @@ async def create_node(
 
     if payload.parent_id is not None:
         await _set_parent(db, user, node, payload.parent_id)
+        # La matière vient du thème parent : une notion rangée sous « Algèbre
+        # de Boole » (maths) ne peut pas être en CEJM. Sans cette reprise, une
+        # matière laissée par défaut créait une incohérence invisible dans
+        # l'arbre.
+        parent = await db.get(KnowledgeNode, payload.parent_id)
+        if parent and parent.subject != node.subject:
+            node.subject = parent.subject
 
     # Les prérequis sont fournis par slug : plus pratique à écrire à la main et
     # stable si les identifiants changent.
@@ -427,6 +436,76 @@ async def read_synthesis(
         updated_at=node.synthesis_updated_at,
         is_stale=bool(node.synthesis) and linked != node.synthesis_source_count,
         linked_documents=linked,
+    )
+
+
+@router.post(
+    "/{node_id}/synthesis/review",
+    response_model=SynthesisReviewRead,
+    summary="Faire relire ma synthèse par l'IA",
+)
+async def review_synthesis(
+    node_id: int, user: CurrentUser, db: DbSession
+) -> SynthesisReviewRead:
+    """
+    L'IA relit la synthèse avec ses connaissances générales et signale erreurs,
+    imprécisions, manques et méthodes plus simples.
+
+    **La synthèse n'est pas modifiée.** Elle reste fidèle aux cours — c'est sur
+    eux que tu seras noté. La relecture est un objet séparé, que tu consultes
+    et dont tu fais ce que tu veux. Mélanger les deux rendrait impossible de
+    distinguer ce qui tombera à l'épreuve de ce qui n'est que culture générale.
+    """
+    node = await _get_owned_node(db, user, node_id)
+
+    if not node.synthesis:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"« {node.title} » n'a pas encore de synthèse. Génère-la d'abord."
+            ),
+        )
+
+    try:
+        result = await ai_service.review_synthesis(node)
+    except AiUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="La relecture n'a pas pu être exploitée. Réessaie.",
+        )
+
+    remarks = [
+        SynthesisRemark(
+            type=str(r.get("type", "methode")),
+            confidence=str(r.get("confidence", "moyenne")),
+            # L'extrait n'est gardé que s'il figure vraiment dans la synthèse :
+            # l'interface le surligne par recherche exacte.
+            quote=(
+                str(r.get("quote", ""))
+                if str(r.get("quote", "")) in node.synthesis
+                else ""
+            ),
+            detail=str(r.get("detail", "")),
+            suggestion=str(r.get("suggestion", "")),
+        )
+        for r in (result.get("remarks") or [])
+        if isinstance(r, dict)
+    ]
+
+    return SynthesisReviewRead(
+        node_id=node.id,
+        node_title=node.title,
+        verdict=str(result.get("verdict", "fidele")),
+        remarks=remarks,
+        summary=str(result.get("summary", "")),
+        reviewed_at=datetime.now(UTC),
+        model=str(result.get("_model", "")),
+        mocked=bool(result.get("_mocked", False)),
     )
 
 
