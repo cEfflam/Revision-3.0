@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import CardKind, Subject
@@ -85,6 +86,57 @@ def _result(completion: Completion, hits: list[SearchHit]) -> AnswerResult:
 # ═════════════════════════════════════════════════════════════════════════
 #  Question / réponse ancrée dans les documents (RAG)
 # ═════════════════════════════════════════════════════════════════════════
+async def learner_context(
+    db: AsyncSession, user: User, *, subject: str | None = None, limit: int = 6
+) -> str:
+    """
+    Décrit l'état d'avancement de l'étudiant, pour l'injecter dans le prompt.
+
+    Sans ce bloc, l'IA répond dans le vide : elle ignore si la notion est
+    acquise ou fraîche, si l'étudiant s'est déjà planté dessus, et à quel
+    niveau parler. Deux étudiants posant la même question reçoivent alors la
+    même réponse — ce qui est précisément ce qu'un tuteur ne fait pas.
+
+    Volontairement compact (quelques centaines de caractères) : c'est du
+    contexte envoyé à CHAQUE appel, il ne doit pas peser sur la facture.
+    """
+    from app.models.graph import KnowledgeNode
+
+    stmt = select(KnowledgeNode).where(KnowledgeNode.user_id == user.id)
+    if subject:
+        stmt = stmt.where(KnowledgeNode.subject == subject)
+
+    nodes = (
+        await db.execute(
+            stmt.where(KnowledgeNode.review_count > 0)
+            .order_by(KnowledgeNode.mastery.asc())
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    if not nodes:
+        return ""
+
+    fragile = [n for n in nodes if n.mastery < 0.6]
+    solide = [n for n in nodes if n.mastery >= 0.85]
+
+    lines = ["### Ce que je sais de l'étudiant"]
+    if fragile:
+        lines.append(
+            "Notions fragiles : "
+            + ", ".join(f"{n.title} ({n.mastery:.0%})" for n in fragile[:4])
+        )
+    if solide:
+        lines.append(
+            "Notions acquises : " + ", ".join(n.title for n in solide[:4])
+        )
+    lines.append(
+        "Appuie-toi sur ce qui est acquis pour expliquer ce qui est fragile. "
+        "N'explique pas ce qu'il maîtrise déjà."
+    )
+    return "\n".join(lines)
+
+
 async def ask(
     db: AsyncSession,
     user: User,
@@ -118,17 +170,21 @@ async def ask(
     if history:
         messages.extend(history[-10:])  # fenêtre glissante : 5 échanges
 
-    user_content = question
+    blocks: list[str] = []
     if context:
-        user_content = (
-            "### Extraits de mes documents\n"
-            f"{context}\n\n"
-            "### Ma question\n"
-            f"{question}"
-        )
-    messages.append(ChatMessage(role="user", content=user_content))
+        blocks.append(f"### Extraits de mes documents\n{context}")
 
-    completion = await get_ai_client().complete(messages, task=task)
+    # L'état de l'apprenant est ajouté à chaque échange : c'est ce qui permet
+    # à l'IA de calibrer son niveau d'explication au lieu de répondre pareil
+    # à tout le monde.
+    profile = await learner_context(db, user, subject=subject)
+    if profile:
+        blocks.append(profile)
+
+    blocks.append(f"### Ma question\n{question}" if blocks else question)
+    messages.append(ChatMessage(role="user", content="\n\n".join(blocks)))
+
+    completion = await get_ai_client().complete(messages, task=task, subject=subject)
     return _result(completion, hits)
 
 
