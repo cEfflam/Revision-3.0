@@ -163,7 +163,9 @@ def _build_actions(
                     else f"{target.mastery:.0%} de maîtrise · "
                     f"{min(target.estimated_minutes, daily_minutes)} min"
                 ),
-                href=f"/review?node={target.id}",
+                # `focus` lance le chronomètre : une session ciblée sans borne
+                # de temps se transforme vite en session sans fin.
+                href=f"/review?node={target.id}&focus={min(25, daily_minutes)}",
                 accent="rose" if critical else "violet",
             )
         )

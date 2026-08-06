@@ -47,6 +47,7 @@ async def get_due_queue(
     *,
     limit: int = 20,
     subject: str | None = None,
+    node_id: int | None = None,
     interleave: bool = True,
 ) -> list[Card]:
     """
@@ -71,7 +72,12 @@ async def get_due_queue(
         .order_by(Card.due_at.asc())
         .limit(limit * 2 if interleave else limit)
     )
-    if subject:
+    if node_id is not None:
+        # Session ciblée sur UNE notion : l'interleaving n'a plus de sens
+        # (une seule matière), et il masquerait l'ordre par échéance.
+        stmt = stmt.where(Card.node_id == node_id)
+        interleave = False
+    elif subject:
         stmt = stmt.join(KnowledgeNode, Card.node_id == KnowledgeNode.id).where(
             KnowledgeNode.subject == subject
         )
