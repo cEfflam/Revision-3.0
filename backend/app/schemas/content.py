@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import DocumentCollection, Subject
+from app.models.enums import DocumentCollection, Subject  # noqa: TC001
 
 
 class DocumentRead(BaseModel):
@@ -70,3 +70,52 @@ class SearchResponse(BaseModel):
     query: str
     hits: list[SearchHitRead]
     embedder: str
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  Rattachement d'un document aux notions du graphe
+# ═════════════════════════════════════════════════════════════════════════
+class NodeProposal(BaseModel):
+    """Une notion détectée dans le document, et ce qu'on en fait."""
+
+    title: str
+    #: "certain"   → rattachement automatique à un nœud existant
+    #: "suggested" → ressemblance probable, à confirmer
+    #: "new"       → aucune correspondance, création proposée
+    verdict: str
+    score: float = 0.0
+    matched_node_id: int | None = None
+    matched_node_title: str = ""
+    matched_node_subject: str = ""
+    #: Matière devinée pour une nouvelle notion.
+    suggested_subject: str = Subject.other.value
+    #: Pré-coché dans l'interface pour les cas sûrs.
+    selected: bool = False
+
+
+class DocumentMappingRead(BaseModel):
+    document_id: int
+    document_title: str
+    headings_found: int
+    proposals: list[NodeProposal] = Field(default_factory=list)
+    already_linked: list[int] = Field(default_factory=list)
+    message: str = ""
+
+
+class MappingDecision(BaseModel):
+    title: str
+    #: Renseigné pour rattacher à un nœud existant ; None pour en créer un.
+    node_id: int | None = None
+    subject: Subject = Subject.other
+    create: bool = False
+
+
+class ApplyMappingRequest(BaseModel):
+    decisions: list[MappingDecision] = Field(default_factory=list)
+
+
+class ApplyMappingResponse(BaseModel):
+    created: int
+    linked: int
+    document_id: int
+    message: str

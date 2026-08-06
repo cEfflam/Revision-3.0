@@ -18,18 +18,26 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession
+from app.core.utils import slugify
 from app.models.content import Document, DocumentChunk
 from app.models.enums import DocumentCollection, Subject
+from app.models.graph import KnowledgeNode
 from app.schemas.content import (
+    ApplyMappingRequest,
+    ApplyMappingResponse,
     ChunkRead,
+    DocumentMappingRead,
     DocumentRead,
     DocumentUpdate,
     IngestResponse,
+    NodeProposal,
     SearchHitRead,
     SearchRequest,
     SearchResponse,
 )
 from app.services.ai import service as ai_service
+from app.services.graph import engine as graph_engine
+from app.services.graph.matcher import extract_candidates, match_title
 from app.services.rag import pipeline
 from app.services.rag.embeddings import get_embedder
 from app.services.rag.extractors import SUPPORTED_EXTENSIONS, UnsupportedDocument
@@ -275,6 +283,198 @@ async def delete_document(
     document = await _get_owned_document(db, user, document_id)
     await pipeline.purge_document(db, document)
     await db.commit()
+
+
+# Mots-clés qui trahissent la matière d'une notion. Volontairement simple et
+# gratuit : deviner « algèbre de Boole → maths » ne justifie pas un appel de
+# modèle facturé. L'utilisateur corrige d'un clic si le verdict est faux.
+SUBJECT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    Subject.sql.value: ("sql", "requet", "jointure", "table", "base de donn", "merise", "mcd"),
+    Subject.dev.value: ("php", "symfony", "poo", "objet", "class", "algorithm", "python",
+                        "javascript", "api", "mvc", "doctrine", "git", "test unitaire"),
+    Subject.network.value: ("reseau", "ip", "tcp", "osi", "dns", "dhcp", "vlan",
+                            "routage", "linux", "serveur", "cloud", "virtualisation"),
+    Subject.security.value: ("securit", "cyber", "rgpd", "chiffr", "authentif",
+                             "injection", "xss", "jwt", "https", "vulnerab", "sauvegarde"),
+    Subject.math.value: ("math", "boole", "graphe", "probabilit", "suite", "matrice",
+                         "arithmetique", "logique", "ordonnancement", "statistique"),
+    Subject.cejm.value: ("juridique", "droit", "contrat", "entreprise", "economi",
+                         "management", "marche", "concurrence", "strateg", "salarie"),
+    Subject.cge.value: ("synthese", "argument", "expression", "culture generale",
+                        "redaction", "dissertation", "ecriture personnelle"),
+    Subject.english.value: ("anglais", "english", "verbe irregulier", "vocabulary",
+                            "grammar", "toeic"),
+}
+
+
+def _guess_subject(title: str, fallback: str) -> str:
+    """Devine la matière d'une notion d'après son intitulé."""
+    normalised = slugify(title).replace("-", " ")
+    for subject, keywords in SUBJECT_KEYWORDS.items():
+        if any(keyword in normalised for keyword in keywords):
+            return subject
+    return fallback
+
+
+@router.get(
+    "/{document_id}/map",
+    response_model=DocumentMappingRead,
+    summary="Quelles notions ce document couvre-t-il ?",
+)
+async def map_document(
+    document_id: int, user: CurrentUser, db: DbSession
+) -> DocumentMappingRead:
+    """
+    Rapproche les sections du document des notions déjà présentes au graphe.
+
+    C'est la réponse au problème du doublon : sans ce rapprochement, importer
+    trois fiches contenant « Algèbre de Boole » créerait trois notions
+    distinctes, chacune avec sa propre maîtrise, et le graphe perdrait tout
+    sens.
+
+    Rien n'est écrit ici : l'endpoint PROPOSE. Les cas certains sont
+    pré-cochés, les cas douteux attendent une décision. Un graphe faux est
+    pire qu'un graphe incomplet — il oriente les révisions vers de mauvaises
+    notions.
+    """
+    document = await _get_owned_document(db, user, document_id)
+
+    headings = (
+        await db.execute(
+            select(DocumentChunk.heading)
+            .where(DocumentChunk.document_id == document.id, DocumentChunk.heading != "")
+            .order_by(DocumentChunk.ordinal)
+        )
+    ).scalars().all()
+
+    candidates = extract_candidates(list(headings))
+    if not candidates:
+        return DocumentMappingRead(
+            document_id=document.id,
+            document_title=document.title,
+            headings_found=0,
+            message=(
+                "Aucun titre de section exploitable. Le document est probablement "
+                "un PDF sans structure : le rattachement doit se faire à la main."
+            ),
+        )
+
+    nodes = (
+        await db.execute(
+            select(KnowledgeNode).where(KnowledgeNode.user_id == user.id)
+        )
+    ).scalars().all()
+    linked = {n.id for n in document.nodes}
+
+    proposals = []
+    for candidate in candidates:
+        match = match_title(candidate.title, list(nodes))
+        proposals.append(
+            NodeProposal(
+                title=candidate.title,
+                verdict=match.verdict,
+                score=match.score,
+                matched_node_id=match.node.id if match.node else None,
+                matched_node_title=match.node.title if match.node else "",
+                matched_node_subject=match.node.subject if match.node else "",
+                # Deviné sur le fil d'Ariane complet : « Les sept couches du
+                # modèle » ne dit rien, « Modèle OSI > Les sept couches » dit
+                # « réseau ».
+                suggested_subject=_guess_subject(
+                    candidate.breadcrumb, document.subject
+                ),
+                # Les rapprochements certains sont pré-cochés ; le reste non.
+                selected=match.verdict == "certain",
+            )
+        )
+
+    certain = sum(1 for p in proposals if p.verdict == "certain")
+    new = sum(1 for p in proposals if p.verdict == "new")
+    return DocumentMappingRead(
+        document_id=document.id,
+        document_title=document.title,
+        headings_found=len(candidates),
+        proposals=proposals,
+        already_linked=sorted(linked),
+        message=(
+            f"{len(candidates)} notions détectées : {certain} déjà au graphe, "
+            f"{new} inconnues, {len(proposals) - certain - new} à confirmer."
+        ),
+    )
+
+
+@router.post(
+    "/{document_id}/map",
+    response_model=ApplyMappingResponse,
+    summary="Rattacher le document aux notions choisies",
+)
+async def apply_mapping(
+    document_id: int,
+    payload: ApplyMappingRequest,
+    user: CurrentUser,
+    db: DbSession,
+) -> ApplyMappingResponse:
+    document = await _get_owned_document(db, user, document_id)
+
+    existing = (
+        await db.execute(
+            select(KnowledgeNode).where(KnowledgeNode.user_id == user.id)
+        )
+    ).scalars().all()
+    by_slug = {n.slug: n for n in existing}
+    linked_ids = {n.id for n in document.nodes}
+
+    created = 0
+    linked = 0
+
+    for decision in payload.decisions:
+        node: KnowledgeNode | None = None
+
+        if decision.node_id is not None:
+            node = await db.get(KnowledgeNode, decision.node_id)
+            if node is None or node.user_id != user.id:
+                continue
+        elif decision.create:
+            slug = slugify(decision.title)
+            # Ceinture et bretelles : même après le rapprochement, deux titres
+            # différents peuvent produire le même slug. La contrainte d'unicité
+            # en base lèverait une erreur ; on réutilise plutôt le nœud.
+            node = by_slug.get(slug)
+            if node is None:
+                node = KnowledgeNode(
+                    user_id=user.id,
+                    slug=slug,
+                    title=decision.title.strip()[:200],
+                    subject=decision.subject.value,
+                    description=f"Notion issue de « {document.title} ».",
+                )
+                db.add(node)
+                await db.flush()
+                by_slug[slug] = node
+                created += 1
+
+        if node is not None and node.id not in linked_ids:
+            document.nodes.append(node)
+            linked_ids.add(node.id)
+            linked += 1
+
+    if created:
+        await graph_engine.recompute_locks(db, user.id)
+    await db.commit()
+
+    logger.info(
+        "Document %s rattaché : %s notions créées, %s liens",
+        document.id, created, linked,
+    )
+    return ApplyMappingResponse(
+        created=created,
+        linked=linked,
+        document_id=document.id,
+        message=(
+            f"{linked} notion(s) rattachée(s) au document, dont {created} "
+            "nouvelle(s) au graphe."
+        ),
+    )
 
 
 @router.get("/limits/upload", summary="Contraintes d'import")

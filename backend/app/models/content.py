@@ -16,10 +16,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Column,
     ForeignKey,
     Index,
     Integer,
     String,
+    Table,
     Text,
     UniqueConstraint,
 )
@@ -28,7 +30,26 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 from app.models.enums import DocumentCollection, DocumentStatus, Subject
 
+# Un document couvre plusieurs notions, une notion apparaît dans plusieurs
+# documents : une fiche de révision BTS SIO touche les onze matières à elle
+# seule. Une simple colonne `node_id` sur Document serait donc fausse.
+document_nodes = Table(
+    "document_nodes",
+    Base.metadata,
+    Column(
+        "document_id",
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "node_id",
+        ForeignKey("knowledge_nodes.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
 if TYPE_CHECKING:
+    from app.models.graph import KnowledgeNode
     from app.models.learning import Card
     from app.models.user import User
 
@@ -78,6 +99,10 @@ class Document(Base, TimestampMixin):
         order_by="DocumentChunk.ordinal",
     )
     cards: Mapped[list[Card]] = relationship(back_populates="document")
+    # Notions couvertes par ce document, rapprochées du graphe à l'import.
+    nodes: Mapped[list[KnowledgeNode]] = relationship(
+        secondary=document_nodes, lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<Document {self.id} {self.title!r} {self.status}>"
