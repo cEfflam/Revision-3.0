@@ -22,6 +22,7 @@ from app.api.v1 import (
     onboarding,
     practice,
     roadmap,
+    sandbox,
     sessions,
     subjects,
 )
@@ -38,5 +39,6 @@ api_router.include_router(cards.router)
 api_router.include_router(documents.router)
 api_router.include_router(sessions.router)
 api_router.include_router(practice.router)
+api_router.include_router(sandbox.router)
 api_router.include_router(roadmap.router)
 api_router.include_router(chat.router)
