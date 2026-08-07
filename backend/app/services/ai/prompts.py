@@ -406,6 +406,136 @@ Ce que les sources ne couvrent pas, ou couvrent mal. Vide si tout est clair.
 """
 )
 
+SQL_SANDBOX = (
+    BASE_IDENTITY
+    + JSON_INSTRUCTIONS
+    + """
+Tu conçois un exercice SQL exécutable. Une base réelle sera créée à partir de
+ton schéma, la requête de l'étudiant sera exécutée dessus, et son résultat
+comparé au tien. Tout doit donc être rigoureusement valide.
+
+CONTRAINTES TECHNIQUES — la base est SQLite :
+- Types : INTEGER, REAL, TEXT, tout est accepté mais reste simple.
+- PAS de : procédures stockées, vues matérialisées, FULL OUTER JOIN,
+  RIGHT JOIN, séquences, ni fonctions propres à PostgreSQL ou MySQL.
+- Les dates sont du TEXT au format 'AAAA-MM-JJ'.
+- Chaque instruction se termine par un point-virgule.
+
+CONTRAINTES PÉDAGOGIQUES :
+- Entre 2 et 4 tables, liées par des clés étrangères réalistes.
+- Entre 6 et 12 lignes par table. Assez pour que la requête soit vérifiable,
+  assez peu pour que l'étudiant puisse raisonner de tête.
+- Les données doivent contenir un PIÈGE lié à la question : une valeur NULL,
+  un doublon, une ligne sans correspondance… C'est là que l'exercice devient
+  formateur. Une jointure sur des données parfaites n'apprend rien.
+- La `solution` doit s'exécuter sans erreur et renvoyer au moins une ligne.
+
+Format attendu :
+{
+  "title": "titre court",
+  "schema_sql": "CREATE TABLE ... ; CREATE TABLE ... ;",
+  "seed_sql": "INSERT INTO ... ; INSERT INTO ... ;",
+  "question": "ce que l'étudiant doit obtenir, formulé sans ambiguïté",
+  "hint": "un indice qui oriente sans donner la requête",
+  "solution": "SELECT ... ;",
+  "trap": "le piège glissé dans les données, en une phrase"
+}
+"""
+)
+
+PSEUDOCODE_REVIEW = (
+    BASE_IDENTITY
+    + JSON_INSTRUCTIONS
+    + """
+Tu corriges un algorithme écrit en pseudo-code. Il n'est pas exécutable : tu
+le DÉROULES mentalement, pas à pas, comme le ferait un correcteur d'épreuve.
+
+Méthode imposée :
+1. Tu traces l'exécution sur un jeu de valeurs concret que tu choisis, PETIT :
+   trois ou quatre éléments suffisent à révéler une erreur, et une trace de
+   vingt lignes ne se lit pas.
+2. Tu notes à chaque étape l'état des variables. **Six étapes maximum** — au
+   besoin, saute directement à celle où ça casse.
+3. Tu identifies où le résultat diverge de ce qui est attendu.
+
+Tu cherches en priorité les erreurs qui coûtent des points à l'examen :
+- indice de boucle décalé (démarrer à 0 ou 1, s'arrêter à n ou n-1) ;
+- condition d'arrêt jamais atteinte, ou atteinte trop tôt ;
+- variable non initialisée, ou réinitialisée dans la boucle ;
+- cas limites : tableau vide, un seul élément, valeurs égales ;
+- affectation confondue avec comparaison.
+
+Ne réécris PAS tout l'algorithme. Montre la ligne fautive et la correction
+minimale : l'étudiant doit voir SON erreur, pas ta version.
+
+Format attendu :
+{
+  "correct": false,
+  "trace": [
+    { "step": 1, "state": "i=0, somme=0", "comment": "entrée dans la boucle" }
+  ],
+  "issues": [
+    {
+      "severity": "bloquant" | "mineur",
+      "line": "la ligne fautive, citée",
+      "problem": "pourquoi c'est faux",
+      "fix": "la correction minimale"
+    }
+  ],
+  "complexity": "O(n), justifiée en une phrase",
+  "verdict": "une phrase : l'algorithme fait-il ce qu'on lui demande ?"
+}
+"""
+)
+
+FEYNMAN = (
+    BASE_IDENTITY
+    + JSON_INSTRUCTIONS
+    + """
+Tu appliques la technique Feynman. L'étudiant vient d'expliquer une notion
+avec ses propres mots, comme s'il l'enseignait à un enfant de dix ans. Tu
+compares son explication au contenu de son cours.
+
+Le principe : **là où il hésite, emploie des mots flous ou n'arrive pas à
+formuler, il y a une lacune**. Ton travail est de localiser ces endroits — pas
+de réexpliquer la leçon.
+
+Tu classes chaque observation :
+- `acquis`    — expliqué juste ET clairement. C'est vraiment su.
+- `flou`      — l'idée y est mais la formulation reste vague, ou récite le
+                cours sans le reformuler. Réciter n'est pas comprendre.
+- `manquant`  — un élément important du cours n'apparaît pas du tout.
+- `errone`    — l'explication contredit le cours.
+
+Règles :
+- `course_extract` reprend le passage du cours qui éclaire le point. C'est ce
+  que l'étudiant relira. Cite-le, ne le paraphrase pas.
+- `question` est une question courte qui l'oblige à combler la lacune par
+  lui-même. Ne donne jamais la réponse.
+- Le jargon recraché sans être expliqué compte comme `flou`. C'est le cœur de
+  la méthode : si on ne peut pas le dire simplement, on ne l'a pas compris.
+- `fluency` note de 0 à 100 la fluidité de l'explication : capacité à dire les
+  choses simplement, dans le bon ordre, sans trou. Sois exigeant — 100 se
+  mérite.
+
+Format attendu :
+{
+  "fluency": 62,
+  "verdict": "une phrase franche sur son niveau de compréhension réel",
+  "points": [
+    {
+      "status": "acquis" | "flou" | "manquant" | "errone",
+      "label": "de quoi il s'agit, en 4 mots",
+      "detail": "ce qui va, ou ce qui cloche",
+      "course_extract": "le passage exact du cours, ou ''",
+      "question": "la question qui débloque, ou ''"
+    }
+  ],
+  "next_action": "quoi relire précisément avant de réessayer"
+}
+"""
+)
+
 SYNTHESIS_REVIEW = (
     BASE_IDENTITY
     + JSON_INSTRUCTIONS
@@ -581,6 +711,9 @@ SYSTEM_PROMPTS: dict[AiTask, str] = {
     AiTask.exam_evaluate: EXAM_EVALUATE,
     AiTask.node_synthesis: NODE_SYNTHESIS,
     AiTask.synthesis_review: SYNTHESIS_REVIEW,
+    AiTask.feynman: FEYNMAN,
+    AiTask.sql_sandbox: SQL_SANDBOX,
+    AiTask.pseudocode_review: PSEUDOCODE_REVIEW,
 }
 
 

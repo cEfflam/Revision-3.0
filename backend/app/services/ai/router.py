@@ -54,6 +54,9 @@ class AiTask(StrEnum):
     node_suggestions = "node_suggestions"
     node_synthesis = "node_synthesis"
     synthesis_review = "synthesis_review"
+    feynman = "feynman"
+    sql_sandbox = "sql_sandbox"
+    pseudocode_review = "pseudocode_review"
 
     # ── Moteurs par matière ──────────────────────────────────────────────
     chat = "chat"
@@ -91,6 +94,12 @@ TASK_ROLE: dict[AiTask, ModelRole] = {
     # Relecture critique : c'est un travail de vérification, pas de rédaction.
     # Affirmer qu'un cours de professeur est faux demande du raisonnement.
     AiTask.synthesis_review: ModelRole.reasoning,
+    # Feynman : repérer une lacune dans une explication demande de comparer
+    # deux formulations, pas de rédiger.
+    AiTask.feynman: ModelRole.reasoning,
+    # Le SQL généré doit s'exécuter réellement : aucune approximation permise.
+    AiTask.sql_sandbox: ModelRole.reasoning,
+    AiTask.pseudocode_review: ModelRole.reasoning,
     AiTask.chat: ModelRole.language,
     AiTask.english_chat: ModelRole.language,
     AiTask.journal: ModelRole.language,
@@ -142,6 +151,11 @@ TASK_TEMPERATURE: dict[AiTask, float] = {
     # Très basse : une synthèse doit restituer, pas inventer.
     AiTask.node_synthesis: 0.15,
     AiTask.synthesis_review: 0.2,
+    AiTask.feynman: 0.2,
+    # Assez haute pour varier les exercices, assez basse pour que le SQL
+    # généré reste syntaxiquement irréprochable.
+    AiTask.sql_sandbox: 0.6,
+    AiTask.pseudocode_review: 0.1,
     AiTask.chat: 0.5,
     AiTask.explain_code: 0.3,
     AiTask.sql_review: 0.2,
@@ -172,6 +186,9 @@ JSON_TASKS: frozenset[AiTask] = frozenset(
         AiTask.exam_generate,
         AiTask.exam_evaluate,
         AiTask.synthesis_review,
+        AiTask.feynman,
+        AiTask.sql_sandbox,
+        AiTask.pseudocode_review,
     }
 )
 
@@ -195,6 +212,14 @@ MAX_TOKENS: dict[AiTask, int] = {
     # généré une fois, relu à chaque question sur la notion.
     AiTask.node_synthesis: 2500,
     AiTask.synthesis_review: 2000,
+    AiTask.feynman: 2500,
+    # Schéma + jeu de données + solution : le plus volumineux de tous.
+    AiTask.sql_sandbox: 3500,
+    # Large, et pour une raison mesurée : sur une tâche de raisonnement, la
+    # réflexion consomme le MÊME budget que la réponse. Un premier essai à
+    # 3000 a produit 2256 jetons de réflexion, ne laissant que 744 pour le
+    # JSON — tronqué, donc inexploitable. La borne doit couvrir les deux.
+    AiTask.pseudocode_review: 6000,
     AiTask.flashcards: 2000,
     AiTask.quiz: 2000,
     AiTask.cejm_case: 2000,

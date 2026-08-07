@@ -17,8 +17,10 @@ from sqlalchemy import func, select
 from app.core.deps import CurrentUser, DbSession
 from app.core.utils import slugify
 from app.models.content import document_nodes
-from app.models.enums import EdgeRelation, NodeStatus, Subject
+from app.models.enums import EdgeRelation, LearningEngine, NodeStatus, Subject
 from app.models.graph import KnowledgeNode, NodeEdge
+from app.models.learning import StudySession
+from app.schemas.sandbox import FeynmanPoint, FeynmanRequest, FeynmanResponse
 from app.schemas.graph import (
     DiagnosisRead,
     EdgeCreate,
@@ -34,6 +36,7 @@ from app.schemas.graph import (
 from app.services.ai import service as ai_service
 from app.services.ai.openrouter import AiUnavailable
 from app.services.graph import engine as graph_engine
+from app.services.srs import service as srs_service
 
 router = APIRouter(prefix="/nodes", tags=["graphe"])
 
@@ -504,6 +507,98 @@ async def review_synthesis(
         remarks=remarks,
         summary=str(result.get("summary", "")),
         reviewed_at=datetime.now(UTC),
+        model=str(result.get("_model", "")),
+        mocked=bool(result.get("_mocked", False)),
+    )
+
+
+@router.post(
+    "/{node_id}/feynman",
+    response_model=FeynmanResponse,
+    summary="Expliquer avec mes mots (technique Feynman)",
+)
+async def feynman(
+    node_id: int,
+    payload: FeynmanRequest,
+    user: CurrentUser,
+    db: DbSession,
+) -> FeynmanResponse:
+    """
+    Tu expliques la notion comme à un enfant de dix ans ; l'IA compare à ton
+    cours et localise les lacunes.
+
+    Le principe de la méthode : **là où tu hésites ou emploies des mots flous,
+    il y a un trou**. L'IA ne réexplique pas la leçon — elle pointe l'endroit
+    et te renvoie au passage exact du cours.
+
+    Bien expliquer est une preuve de maîtrise plus forte que reconnaître une
+    réponse : la fluidité obtenue fait donc bouger la maîtrise de la notion.
+    """
+    node = await _get_owned_node(db, user, node_id)
+
+    try:
+        result = await ai_service.check_feynman(db, user, node, payload.explanation)
+    except AiUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Aucun cours n'est rattaché à « {node.title} ». Sans référence, "
+                "impossible de comparer ton explication."
+            ),
+        )
+
+    fluency = max(0, min(100, int(result.get("fluency", 0) or 0)))
+
+    # La fluidité alimente la maîtrise, au même poids qu'une flashcard :
+    # expliquer clairement prouve la compréhension, mais un seul passage ne
+    # doit pas emporter la décision.
+    before = node.mastery
+    node.mastery = round(
+        node.mastery * (1 - graph_engine.MASTERY_ALPHA)
+        + (fluency / 100) * graph_engine.MASTERY_ALPHA,
+        4,
+    )
+    node.review_count += 1
+    node.last_studied_at = datetime.now(UTC)
+    node.status = graph_engine.derive_status(node).value
+
+    db.add(
+        StudySession(
+            user_id=user.id,
+            node_id=node.id,
+            engine=LearningEngine.chat.value,
+            duration_seconds=600,
+            summary=f"Feynman — {node.title} — fluidité {fluency}/100",
+        )
+    )
+    await srs_service.touch_activity(db, user, minutes=10, sessions_count=1)
+    await db.commit()
+    await db.refresh(node)
+
+    return FeynmanResponse(
+        node_id=node.id,
+        node_title=node.title,
+        fluency=fluency,
+        verdict=str(result.get("verdict", "")),
+        points=[
+            FeynmanPoint(
+                status=str(p.get("status", "flou")),
+                label=str(p.get("label", "")),
+                detail=str(p.get("detail", "")),
+                course_extract=str(p.get("course_extract", "")),
+                question=str(p.get("question", "")),
+            )
+            for p in (result.get("points") or [])
+            if isinstance(p, dict)
+        ],
+        next_action=str(result.get("next_action", "")),
+        mastery_delta=round(node.mastery - before, 4),
+        mastery_after=node.mastery,
         model=str(result.get("_model", "")),
         mocked=bool(result.get("_mocked", False)),
     )

@@ -361,6 +361,89 @@ export interface SynthesisReview {
   mocked: boolean;
 }
 
+// ── Technique Feynman ─────────────────────────────────────────────────────
+export interface FeynmanPoint {
+  /** "acquis" | "flou" | "manquant" | "errone" */
+  status: string;
+  label: string;
+  detail: string;
+  /** Le passage du cours à relire — étape 4 de la méthode. */
+  course_extract: string;
+  /** Question qui pousse à combler la lacune soi-même. */
+  question: string;
+}
+
+export interface FeynmanResponse {
+  node_id: number;
+  node_title: string;
+  /** 0 à 100 : capacité à dire les choses simplement, sans trou. */
+  fluency: number;
+  verdict: string;
+  points: FeynmanPoint[];
+  next_action: string;
+  mastery_delta: number;
+  mastery_after: number;
+  model: string;
+  mocked: boolean;
+}
+
+// ── Bac à sable SQL ───────────────────────────────────────────────────────
+export interface TablePreview {
+  name: string;
+  columns: string[];
+  rows: string[][];
+  row_count: number;
+}
+
+export interface SqlExercise {
+  exercise_id: string;
+  title: string;
+  question: string;
+  hint: string;
+  trap: string;
+  schema_sql: string;
+  tables_preview: TablePreview[];
+  model: string;
+  mocked: boolean;
+}
+
+export interface SqlRunResponse {
+  correct: boolean;
+  explanation: string;
+  columns: string[];
+  rows: string[][];
+  error: string;
+  truncated: boolean;
+  expected_columns: string[];
+  expected_rows: string[][];
+  solution: string;
+}
+
+// ── Bac à sable pseudo-code ───────────────────────────────────────────────
+export interface TraceStep {
+  step: number;
+  state: string;
+  comment: string;
+}
+
+export interface CodeIssue {
+  /** "bloquant" | "mineur" */
+  severity: string;
+  line: string;
+  problem: string;
+  fix: string;
+}
+
+export interface PseudocodeResponse {
+  correct: boolean;
+  trace: TraceStep[];
+  issues: CodeIssue[];
+  complexity: string;
+  verdict: string;
+  model: string;
+  mocked: boolean;
+}
+
 // ── Rattachement document ↔ notions ───────────────────────────────────────
 export interface NodeProposal {
   title: string;

@@ -86,6 +86,45 @@ def _result(completion: Completion, hits: list[SearchHit]) -> AnswerResult:
 # ═════════════════════════════════════════════════════════════════════════
 #  Question / réponse ancrée dans les documents (RAG)
 # ═════════════════════════════════════════════════════════════════════════
+async def scoped_document_ids(
+    db: AsyncSession, user: User, node_id: int
+) -> list[int] | None:
+    """
+    Documents rattachés à une notion ET à ses sous-notions.
+
+    Renvoie None quand rien n'est rattaché : on ne restreint alors PAS la
+    recherche. Un périmètre vide écarterait tout et l'utilisateur n'aurait
+    aucune réponse — pire qu'un peu de bruit.
+    """
+    from app.models.content import document_nodes
+    from app.models.graph import KnowledgeNode
+
+    # Descente sur deux niveaux : Matière > Thème > Notion. Au-delà le
+    # référentiel n'a pas vocation à s'enfoncer.
+    node_ids = {node_id}
+    for _ in range(2):
+        children = (
+            await db.execute(
+                select(KnowledgeNode.id).where(
+                    KnowledgeNode.user_id == user.id,
+                    KnowledgeNode.parent_id.in_(node_ids),
+                )
+            )
+        ).scalars().all()
+        if not children:
+            break
+        node_ids.update(children)
+
+    rows = (
+        await db.execute(
+            select(document_nodes.c.document_id)
+            .where(document_nodes.c.node_id.in_(node_ids))
+            .distinct()
+        )
+    ).scalars().all()
+    return [int(d) for d in rows] or None
+
+
 async def learner_context(
     db: AsyncSession, user: User, *, subject: str | None = None, limit: int = 6
 ) -> str:
@@ -161,13 +200,18 @@ async def ask(
     # six fragments épars se recoupent et se contredisent parfois.
     synthesis = ""
     synthesis_title = ""
+    scoped_documents: list[int] | None = None
     if node_id:
         from app.models.graph import KnowledgeNode
 
         node = await db.get(KnowledgeNode, node_id)
-        if node and node.user_id == user.id and node.synthesis:
-            synthesis = node.synthesis
-            synthesis_title = node.title
+        if node and node.user_id == user.id:
+            if node.synthesis:
+                synthesis = node.synthesis
+                synthesis_title = node.title
+            # Périmètre documentaire de la notion ET de ses enfants : un thème
+            # travaillé doit voir les documents de ses sous-notions.
+            scoped_documents = await scoped_document_ids(db, user, node_id)
 
     hits: list[SearchHit] = []
     context = ""
@@ -189,6 +233,7 @@ async def ask(
             question,
             collections=collections,
             subject=None if node_id else subject,
+            document_ids=scoped_documents,
             top_k=3 if synthesis else None,
         )
         context = pipeline.build_context(
@@ -527,6 +572,123 @@ async def review_synthesis(node) -> dict:
         logger.error("Relecture non parsable : %s", exc)
         return {}
     if not isinstance(payload, dict):
+        return {}
+
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    return payload
+
+
+async def check_feynman(
+    db: AsyncSession, user: User, node, explanation: str
+) -> dict:
+    """
+    Compare l'explication de l'étudiant au contenu de son cours.
+
+    Le principe de la méthode : là où il hésite, emploie des mots flous ou
+    n'arrive pas à formuler, il y a une lacune. On ne réexplique pas la leçon,
+    on LOCALISE le trou et on renvoie au passage exact du cours.
+    """
+    source = node.synthesis
+    if not source:
+        # Sans synthèse, on prend les extraits les plus proches de la notion.
+        hits = await pipeline.search(
+            user,
+            node.title,
+            subject=node.subject,
+            document_ids=await scoped_document_ids(db, user, node.id),
+            top_k=5,
+        )
+        source = pipeline.build_context(hits, max_chars=6000)
+
+    if not source.strip():
+        return {}
+
+    prompt = (
+        f"NOTION : {node.title}\n"
+        f"MATIÈRE : {node.subject}\n\n"
+        f"### LE COURS\n{source}\n\n"
+        f"### SON EXPLICATION\n{explanation.strip()}"
+    )
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.feynman)),
+        ChatMessage(role="user", content=prompt),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.feynman, subject=node.subject
+    )
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Retour Feynman non parsable : %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    return payload
+
+
+async def generate_sql_exercise(
+    *, topic: str = "", difficulty: int = 2, notion: str = ""
+) -> dict:
+    """Conçoit un exercice SQL dont le schéma et les données sont exécutables."""
+    focus = notion or topic or "les jointures et l'agrégation"
+    prompt = (
+        f"THÈME : {focus}\n"
+        f"DIFFICULTÉ : {difficulty}/5\n"
+        "Contexte métier : une PME du secteur informatique (BTS SIO)."
+    )
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.sql_sandbox)),
+        ChatMessage(role="user", content=prompt),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.sql_sandbox, subject="sql"
+    )
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Exercice SQL non parsable : %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    payload["_model"] = completion.model
+    payload["_mocked"] = completion.mocked
+    return payload
+
+
+async def review_pseudocode(code: str, intent: str = "") -> dict:
+    """Déroule un algorithme en pseudo-code et signale les erreurs."""
+    prompt = (
+        (f"CE QUE L'ALGORITHME DOIT FAIRE : {intent}\n\n" if intent else "")
+        + f"### PSEUDO-CODE\n{code[:8000]}"
+    )
+    messages = [
+        ChatMessage(role="system", content=system_prompt(AiTask.pseudocode_review)),
+        ChatMessage(role="user", content=prompt),
+    ]
+    completion = await get_ai_client().complete(
+        messages, task=AiTask.pseudocode_review, subject="dev"
+    )
+
+    try:
+        payload = parse_json_response(completion.text)
+    except ValueError as exc:
+        logger.error("Revue de pseudo-code non parsable : %s", exc)
+        return {}
+    if not isinstance(payload, dict):
+        # Sans cette trace, une réponse tronquée que le parseur récupère sous
+        # forme de liste produisait un échec parfaitement muet.
+        logger.warning(
+            "Revue de pseudo-code de type inattendu (%s) : %r",
+            type(payload).__name__,
+            completion.text[:300],
+        )
         return {}
 
     payload["_model"] = completion.model

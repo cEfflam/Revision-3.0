@@ -30,6 +30,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { CurriculumTree } from "@/components/curriculum-tree";
 import { NodeSynthesisPanel } from "@/components/node-synthesis";
+import { FeynmanPanel } from "@/components/feynman-panel";
 
 type Tab = "overview" | "curriculum";
 
@@ -178,10 +179,16 @@ export default function SubjectDetailPage() {
             }
           />
           {selectedNode && (
-            <NodeSynthesisPanel
-              nodeId={selectedNode.id}
-              nodeTitle={selectedNode.title}
-            />
+            <>
+              <NodeSynthesisPanel
+                nodeId={selectedNode.id}
+                nodeTitle={selectedNode.title}
+              />
+              <FeynmanPanel
+                nodeId={selectedNode.id}
+                nodeTitle={selectedNode.title}
+              />
+            </>
           )}
           {!selectedNode && (
             <p className="px-1 text-center text-xs font-medium text-slate-400">

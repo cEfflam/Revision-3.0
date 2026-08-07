@@ -23,7 +23,11 @@ import type {
   ExamEvaluation,
   ExamFormat,
   ExamRead,
+  FeynmanResponse,
   PracticeSubject,
+  PseudocodeResponse,
+  SqlExercise,
+  SqlRunResponse,
   GenerateCardsResponse,
   Goal,
   GraphRead,
@@ -232,6 +236,34 @@ export const api = {
   reviewSynthesis: (nodeId: number) =>
     request<SynthesisReview>(`/nodes/${nodeId}/synthesis/review`, {
       method: "POST",
+    }),
+
+  // ── Technique Feynman ───────────────────────────────────────────────────
+  feynman: (nodeId: number, explanation: string) =>
+    request<FeynmanResponse>(`/nodes/${nodeId}/feynman`, {
+      method: "POST",
+      json: { explanation },
+    }),
+
+  // ── Bacs à sable ────────────────────────────────────────────────────────
+  sqlExercise: (payload: {
+    node_id?: number;
+    topic?: string;
+    difficulty?: number;
+  }) =>
+    request<SqlExercise>("/sandbox/sql/exercise", {
+      method: "POST",
+      json: payload,
+    }),
+  runSql: (exercise_id: string, query: string, give_up = false) =>
+    request<SqlRunResponse>("/sandbox/sql/run", {
+      method: "POST",
+      json: { exercise_id, query, give_up },
+    }),
+  reviewPseudocode: (code: string, intent: string) =>
+    request<PseudocodeResponse>("/sandbox/pseudocode", {
+      method: "POST",
+      json: { code, intent },
     }),
 
   // ── Graphe ──────────────────────────────────────────────────────────────
