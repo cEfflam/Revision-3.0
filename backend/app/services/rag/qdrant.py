@@ -29,6 +29,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    MatchAny,
     MatchValue,
     PayloadSchemaType,
     PointStruct,
@@ -145,6 +146,7 @@ class VectorStore:
         collections: list[str],
         top_k: int = 6,
         subject: str | None = None,
+        document_ids: list[int] | None = None,
         dim: int | None = None,
     ) -> list[SearchHit]:
         """
@@ -159,6 +161,17 @@ class VectorStore:
         if subject:
             conditions.append(
                 FieldCondition(key="subject", match=MatchValue(value=subject))
+            )
+        if document_ids:
+            # Périmètre imposé : on ne cherche que dans les documents rattachés
+            # à la notion travaillée. C'est ce qui évite qu'une question sur
+            # l'algèbre de Boole remonte du CEJM parce que deux mots se
+            # ressemblent — moins de bruit, contexte plus court, réponse plus
+            # juste.
+            conditions.append(
+                FieldCondition(
+                    key="document_id", match=MatchAny(any=list(document_ids))
+                )
             )
         query_filter = Filter(must=conditions)
 

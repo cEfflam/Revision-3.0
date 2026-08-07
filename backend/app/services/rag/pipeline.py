@@ -207,8 +207,16 @@ async def search(
     collections: list[str] | None = None,
     top_k: int | None = None,
     subject: str | None = None,
+    document_ids: list[int] | None = None,
 ) -> list[SearchHit]:
-    """Recherche sémantique dans les documents de l'utilisateur."""
+    """
+    Recherche sémantique dans les documents de l'utilisateur.
+
+    `document_ids` restreint le périmètre aux seuls documents rattachés à la
+    notion travaillée : c'est la dernière brique du référentiel. Sans elle,
+    une question sur l'algèbre de Boole peut remonter du CEJM parce que deux
+    formulations se ressemblent.
+    """
     query = (query or "").strip()
     if not query:
         return []
@@ -224,6 +232,7 @@ async def search(
         # valeur configurée reprend la main.
         top_k=top_k or settings.RAG_TOP_K,
         subject=subject,
+        document_ids=document_ids,
         dim=embedder.dim,
     )
 
