@@ -3,10 +3,10 @@
   "configurations": [
     {
       "name": "revisio-frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
-      "port": 3000,
-      "autoPort": true
+      "//": "npm.cmd et non npm : sous Windows, le shim npm sans extension casse sur l'espace de « C:\\Program Files ». Port 3010 et non 3000 : les dev servers LaMeDuSe occupent 3000, 3002 et 3003.",
+      "runtimeExecutable": "npm.cmd",
+      "runtimeArgs": ["run", "dev", "--prefix", "frontend", "--", "-p", "3010"],
+      "port": 3010
     }
   ]
 }
