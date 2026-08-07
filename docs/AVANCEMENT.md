@@ -1,9 +1,21 @@
 # 📊 Avancement de REVISIO
 
-> Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-06**.
+> Mis à jour à chaque session de travail. Dernière mise à jour : **2026-08-07**.
 
-**Global : ~96 %** du cahier des charges. **IA branchée en réel** (Qwen + DeepSeek).
-Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
+**Les quatre méthodes d'apprentissage sont livrées.** L'application est
+utilisable de bout en bout et prête à être testée pour de vrai.
+
+| | |
+| --- | --- |
+| Fonctionnalités d'apprentissage | **~97 %** |
+| Mise en production (phase 5) | **5 %** |
+
+> **Ce n'est pas 100 %, et voici exactement ce qui manque** — aucun de ces
+> points n'empêche de travailler avec l'application aujourd'hui :
+> graphe visuel React Flow · FSRS · OCR · injection automatique au graphe à
+> l'import · assistant de premier lancement · écran de réglages ·
+> CI/CD, déploiement VPS et sauvegardes · les trois points de cohérence
+> ⚠️ listés en bas de page.
 
 > ⚙️ **Application mono-utilisateur.** Conçue pour un seul apprenant. La mise
 > en ligne servira à y accéder depuis plusieurs appareils, pas à ouvrir des
@@ -15,7 +27,7 @@ Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
 | 1 · Fondations | ✅ **100 %** | Docker, auth, modèles, migrations, UI |
 | 2 · RAG & import | ✅ **100 %** | PDF/DOCX/MD, Qdrant, embeddings locaux, AI Router |
 | 3 · Graphe & SRS | 🟡 **75 %** | SM-2 ✅, graphe + diagnostic ✅ · manque React Flow, FSRS |
-| 4 · Moteurs & Roadmap IA | ✅ **95 %** | + entraînement type BTS · manque sandbox SQL |
+| 4 · Moteurs & Roadmap IA | ✅ **100 %** | + entraînement BTS, Feynman, sandboxes SQL et pseudo-code |
 | 5 · Polish & déploiement | ❌ **5 %** | Manifest PWA seul · manque CI/CD, VPS, backups |
 
 ## 🧠 Les méthodes d'apprentissage, et où elles vivent
@@ -25,7 +37,7 @@ Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
 | **Active Recall** (effet de test) | ✅ | `/review` : la question s'affiche seule, la réponse n'apparaît qu'après l'effort. Quiz et entraînement BTS reposent sur le même principe. |
 | **Répétition espacée** | ✅ | `services/srs/sm2.py` — SM-2 complet, 4 états, intervalles calculés sur la courbe d'Ebbinghaus. 7 tests. |
 | **Interleaving** | ✅ | `srs/service.py::_interleave_by_subject` — round-robin sur les matières dans la file. Désactivé sur une session ciblée (une seule matière). |
-| **Feynman / auto-explication** | 🟡 | Présent dans les prompts (reformuler avec ses mots, question de vérification finale) et via `hint` + `explanation` sur les cartes. **Pas encore d'écran dédié** où l'on explique à voix haute et se fait corriger. |
+| **Feynman / auto-explication** | ✅ | Panneau dédié sous chaque notion du référentiel. Tu expliques avec tes mots ; l'IA classe chaque point (acquis / flou / manquant / erroné), cite le passage exact de ton cours et pose une question — jamais la réponse. Indice de fluidité sur 100. |
 | **Retrieval practice** | ✅ | Toute la file SRS + le quiz + les sujets d'examen. |
 | **Difficulté adaptative** | ✅ | `ease_factor` par carte, `mastery` par nœud, verrouillage des prérequis. |
 | **Analyse des erreurs** | 🟡 | Diagnostic des prérequis ✅, prompt `error_analysis` ✅ · pas d'écran dédié. |
@@ -65,7 +77,11 @@ Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
 | **Décroissance de maîtrise** | Une notion à 85 % il y a 6 mois passe derrière une à 70 % d'hier |
 | **Arbre du référentiel éditable** | Thème créé, notion déplacée, « À classer » vidé — au navigateur |
 | **Synthèse + relecture dans l'UI** | Génération, affichage, relecture « fiable / 0 remarque » |
-| Tests backend | 17/17 (SM-2, découpage, référentiel) |
+| **Technique Feynman** | Explication volontairement vague → fluidité 35/100, 5 lacunes localisées, verdict « il récite des mots sans les expliquer » |
+| **Sandbox SQL** | Exercice clients/projets généré en 63 s, piège NULL inclus ; INNER JOIN → 7 lignes au lieu de 8, LEFT JOIN correct, `DROP TABLE` refusé pédagogiquement |
+| **Sandbox pseudo-code** | Bug `max <- 0` trouvé sur tableau de négatifs **et** cas limite `n = 0`, trace en 4 étapes |
+| **RAG restreint à la notion** | Filtre par documents rattachés (± 2 niveaux d'enfants), le filtre matière est levé dès qu'une notion est ciblée |
+| Tests backend | **51/51** (SM-2, découpage, référentiel, JSON, appariement, décroissance, boucle examen) |
 
 ---
 
@@ -90,7 +106,7 @@ Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
       créer un thème, ajouter une notion, renommer, déplacer, supprimer
 - [x] Panneau de synthèse + relecture IA au clic sur une notion
 - [x] Panneau de rattachement branché dans le Brain *(il était écrit, jamais utilisé)*
-- [ ] Restreindre la recherche RAG au thème en cours de travail
+- [x] Restreindre la recherche RAG au thème en cours de travail
 
 > **Déplacement par sélection, pas par glisser-déposer** : sur un arbre à
 > plusieurs niveaux, le glisser-déposer est pénible au doigt et ambigu
@@ -127,19 +143,40 @@ Plus aucune fonctionnalité backend n'est inaccessible depuis le navigateur.
 > **Le piège évité** : une synthèse est *lossy*. Les fragments bruts sont
 > conservés pour l'article de loi exact et la syntaxe précise.
 
-### 2. Technique Feynman — écran dédié
-*Idée notée le 2026-08-06.* Seule des quatre méthodes à n'être que partielle.
+### 2. ✅ Technique Feynman — **livrée le 2026-08-07**
 
-Le déroulé visé, fidèle à la méthode :
-1. **Choisir une notion** dans le référentiel.
+Les quatre temps de la méthode, dans l'ordre :
+1. **Choisir une notion** — l'arbre du référentiel.
 2. **Expliquer avec ses mots**, comme à un enfant de 10 ans, sans jargon.
-3. **Repérer les blocages** : l'IA compare l'explication au cours et pointe ce
-   qui est flou, absent ou faux — puis affiche le passage exact du cours.
-4. **Recommencer** jusqu'à ce que ce soit limpide, avec un suivi des tentatives.
+3. **Repérer les blocages** — l'IA compare au cours et classe chaque point :
+   acquis, flou, manquant, erroné, avec le passage exact du cours.
+4. **Recommencer** — bouton « Réexpliquer après avoir relu ».
 
-> À nuancer : une fois la notion réellement révisée, l'exercice se confond avec
-> une carte SRS ouverte. L'intérêt propre est le *suivi de fluidité* dans le
-> temps, pas l'explication isolée.
+> **Pas de bouton « voir la réponse », volontairement.** Chaque lacune
+> s'accompagne d'une *question* qui pousse à la combler soi-même. La méthode
+> ne vaut que si l'effort est fourni — un corrigé la vide de son sens.
+
+- [ ] Historique des tentatives et courbe de fluidité dans le temps
+      *(l'intérêt propre de la méthode ; aujourd'hui chaque tentative est
+      isolée et seule la maîtrise du nœud garde une trace)*
+
+### 2bis. ✅ Bacs à sable SQL et pseudo-code — **livrés le 2026-08-07**
+
+- [x] `POST /sandbox/sql/exercise` — schéma, jeu de données et solution, avec
+      un piège délibéré ; l'exercice est rejeté si sa propre solution échoue
+- [x] `POST /sandbox/sql/run` — **exécution réelle** en SQLite mémoire,
+      comparaison des ensembles de lignes sans tenir compte de l'ordre
+- [x] `POST /sandbox/pseudocode` — trace pas à pas, erreurs, complexité
+- [x] Écran `/sandbox` à deux onglets
+
+> **Pourquoi SQLite et non PostgreSQL** : la base de l'exercice est montée en
+> mémoire et détruite aussitôt. Aucune requête d'étudiant n'approche des
+> données de l'application. Les mots-clés d'écriture sont refusés avec un
+> message pédagogique, avec 3 s et 2 M d'instructions comme plafonds.
+
+> **C'est le résultat qui juge, pas la requête.** Deux formulations
+> différentes qui renvoient le même ensemble de lignes sont toutes deux
+> justes — c'est exactement la réalité de SQL.
 
 ### 3. Référentiel détaillé par thème
 *Demandé le 2026-08-05.* Le graphe actuel a 51 nœuds génériques. Objectif :
@@ -176,11 +213,37 @@ une matière d'un modèle à l'autre demande d'éditer le code et de redémarrer
 - [x] ~~Générateur de roadmap IA~~
 - [x] ~~Mode Focus chronométré~~
 - [x] ~~Quiz dynamique~~
+- [x] ~~Sandbox SQL *(exécution réelle des requêtes)*~~
 - [ ] Graphe visuel React Flow *(termine la phase 3)*
 - [ ] Injection auto dans le graphe à l'import *(`suggest_nodes()` jamais appelée)*
-- [ ] Sandbox SQL *(exécution réelle des requêtes)*
 - [ ] FSRS, OCR
 - [ ] CI GitHub Actions, déploiement VPS, sauvegardes
+
+---
+
+## 🚀 Comment tester
+
+```bash
+docker compose up -d              # backend + PostgreSQL + Qdrant
+npm run dev --prefix frontend -- -p 3010
+```
+
+Puis `http://localhost:3010`, compte de démo `demo@revisio.app`.
+
+> **Port 3010 et non 3000** : les serveurs de développement LaMeDuSe occupent
+> déjà 3000, 3002 et 3003 sur cette machine.
+
+**Ce à quoi s'attendre.** Les tâches de raisonnement (exercice SQL, relecture
+d'algorithme, correction de copie, Feynman) prennent **30 à 90 secondes** :
+le modèle déroule sa réflexion avant d'écrire. Mesuré : 63 s pour un exercice
+SQL complet. Un compteur d'attente l'affiche désormais à l'écran — sans lui,
+on croit que c'est planté et on recharge.
+
+**Fournisseur d'IA.** OpenRouter, avec Qwen 3.7 Flash sur le français et le
+JSON, DeepSeek V4 Flash avec raisonnement sur les maths, l'algorithmique et
+le code. Gemini via Google AI Studio a été étudié le 2026-08-07 et **écarté** :
+le palier sans frais plafonne à 20 requêtes par jour, ce qu'un seul import de
+cours consomme.
 
 ---
 
